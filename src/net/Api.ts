@@ -427,16 +427,21 @@ export class NetworkApi {
   // --------------------------------------------------------------------------
 
   public async linkEmail(email: string): Promise<{ error: string | null }> {
-    if (!this.supabase || !this.user) {
-      return { error: 'Backend connection not available.' };
+    if (!this.supabase) {
+      return { error: 'Backend connection not configured. Check environment variables.' };
     }
 
     try {
-      const { error } = await this.supabase.auth.updateUser({ email });
+      const { error } = await this.supabase.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: true,
+        },
+      });
       if (error) return { error: error.message };
       return { error: null };
     } catch (e: any) {
-      return { error: e.message || 'Linking failed' };
+      return { error: e.message || 'Linking request failed' };
     }
   }
 
