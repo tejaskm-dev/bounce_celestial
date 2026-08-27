@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build Outputs
+dist/
+build/
+
+# Environment Files (Keep secrets safe!)
+.env
+.env.local
+.env.*.local
+
+# Test & Log Artifacts
+test-results/
+playwright-report/
+*.log
+.DS_Store
+
+# Scratch / Internal dirs
+claude/
+.system_generated/
