@@ -2782,6 +2782,20 @@
       .tl-item span { font-size: clamp(11px, 1vw, 17px); color: var(--hud-gold); }
       .tl-item:hover { color: var(--hud-navy); }
 
+      @media (max-width: 780px), (pointer: coarse) {
+        .title-links { padding: 6px 0; }
+        .tl-item {
+          gap: 3px; padding: 7px 2px; min-height: 44px; justify-content: center;
+          font-size: clamp(6px, 1.5vw, 8.5px); letter-spacing: 0.08em;
+        }
+        .tl-item span { font-size: clamp(13px, 3.4vw, 17px); }
+      }
+      /* Shortest landscape: the labels go, the icons and the targets stay. */
+      @media (max-height: 430px) and (orientation: landscape) {
+        .tl-item { font-size: 0; gap: 0; letter-spacing: 0; }
+        .tl-item span { font-size: 17px; }
+      }
+
       .skin-btn.selected {
         border-color: var(--hud-gold);
         box-shadow: 0 0 0 2px rgba(200,168,104,0.4), 0 4px 14px rgba(37,48,70,0.18);
@@ -2839,15 +2853,29 @@
 
       /* ---- results --------------------------------------------------------- */
       #screen-results {
+        padding: clamp(6px, 2vh, 18px) env(safe-area-inset-right)
+                 clamp(6px, 2vh, 18px) env(safe-area-inset-left);
         position: absolute; inset: 0; z-index: 10;
-        display: grid; place-items: center;
+        display: grid; place-items: center; grid-template-rows: minmax(0, 1fr);
+        box-sizing: border-box;
         opacity: 0; pointer-events: none; transition: opacity 320ms ease;
         background: radial-gradient(circle at 50% 45%,
           rgba(255,255,255,0.42), rgba(196,216,236,0.30));
         backdrop-filter: blur(3px);
       }
       #screen-results.active { opacity: 1; pointer-events: auto; }
+      /* A bounded column, not a block that grows past the screen.
+         At 956x440 this card measured 479px tall in a 440px viewport with no
+         scroll container anywhere in it — the buttons were simply off-screen
+         and there was nothing to scroll. The page cards had already been given
+         this treatment; the results screen is a separate component and had
+         never had it. */
       .results-card {
+        display: flex; flex-direction: column;
+        /* Against the container, which already carries the inset padding —
+           measuring against the viewport double-counted nothing and left the
+           card overhanging by exactly its own padding. */
+        max-height: 100%;
         width: clamp(300px, 46vw, 660px);
         padding: clamp(26px, 3vw, 54px) clamp(20px, 2.6vw, 46px) clamp(20px, 2.4vw, 42px);
         text-align: center;
@@ -2985,7 +3013,20 @@
       .results-actions {
         display: flex; gap: clamp(7px, 0.8vw, 13px);
         margin-top: clamp(15px, 1.5vw, 26px);
+        flex: none;
       }
+      .results-scroll {
+        flex: 1 1 auto; min-height: 0;
+        overflow-y: auto; overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+      }
+      .results-scroll::-webkit-scrollbar { width: 4px; }
+      .results-scroll::-webkit-scrollbar-thumb {
+        background: rgba(184,143,74,0.45); border-radius: 2px;
+      }
+      .results-scroll::-webkit-scrollbar-track { background: transparent; }
+      .results-crest, .results-eyebrow, .results-title, .results-rule { flex: none; }
       .results-btn {
         flex: 1; cursor: pointer; border: 0; border-radius: clamp(8px, 0.8vw, 13px);
         padding: clamp(12px, 1.25vw, 21px);
@@ -3009,14 +3050,18 @@
           width: min(88vw, 420px);
         }
         .title-eyebrow { left: 50%; transform: translateX(-50%); }
-        .title-controls, .title-links { display: none; }
+        /* The key legend goes; the navigation stays. Two media queries used to
+           drop `.title-links` as well, and mobile landscape matches both — so
+           on a phone there was no route to Abilities, Achievements, the
+           leaderboard or settings at any point. */
+        .title-controls { display: none; }
         #skins { bottom: clamp(8px, 1.6vh, 18px); max-width: 96vw; }
         .title-version, #audio-toggle { display: none; }
       }
       @media (max-height: 520px) and (orientation: landscape) {
         .title-panel { top: 46%; }
         #logo { font-size: clamp(34px, 5vw, 60px); }
-        .title-controls, .title-links { display: none; }
+        .title-controls { display: none; }
       }
 
 
@@ -4468,6 +4513,11 @@
 
           <div class="results-rule"></div>
 
+          <!-- Scroll region. Everything above and below this stays put; only
+               the readout moves, so Play Again is never something you have to
+               go looking for. -->
+          <div class="results-scroll">
+
           <div class="results-score-lbl">Final Score</div>
           <div class="results-score" id="results-score">0</div>
           <div class="results-badge" id="results-rank-letter">Rank &mdash;</div>
@@ -4506,6 +4556,8 @@
             </div>
             <div class="ru-bar"><div class="ru-fill" id="results-unlock-fill"></div></div>
             <div class="ru-note" id="results-unlock-note"></div>
+          </div>
+
           </div>
 
           <div class="results-actions">
