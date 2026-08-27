@@ -21,9 +21,12 @@ jobs:
         with:
           version: latest
 
-      - name: Deploy submit-run Edge Function
+      - name: Deploy Edge Functions
         run: |
           supabase functions deploy submit-run \
+            --project-ref ${{ secrets.SUPABASE_PROJECT_ID || 'pnytidpsgjuuudtzrdym' }} \
+            --no-verify-jwt
+          supabase functions deploy send-email \
             --project-ref ${{ secrets.SUPABASE_PROJECT_ID || 'pnytidpsgjuuudtzrdym' }} \
             --no-verify-jwt
         env:
