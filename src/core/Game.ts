@@ -803,6 +803,14 @@ export class Game {
     this.pipeline.render();
   }
 
+  /**
+   * On devices with no Fullscreen API, offer the route that does work.
+   * Called once the title screen lands, never mid-run.
+   */
+  public offerHomeScreenInstall(): void {
+    this.orientation.maybeOfferHomeScreen();
+  }
+
   /** Hand the camera back to the attract rig once the climb finishes. */
   public endIntroAscent(): void {
     this.introActive = false;

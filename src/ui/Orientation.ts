@@ -57,6 +57,65 @@ export class Orientation {
     await this.requestLock();
   }
 
+  /**
+   * Offer the Add to Home Screen route, on the title screen.
+   *
+   * Deliberately not on the PLAY press. Hanging it off PLAY put a modal over
+   * the countdown of the run the player had just asked for — the exact wall
+   * that entering fullscreen on first tap would have been. The title screen is
+   * where someone is still deciding; that is where an offer belongs.
+   */
+  maybeOfferHomeScreen(): void {
+    if (!Orientation.needsHomeScreenForFullscreen()) return;
+    this.showIosHint();
+  }
+
+  /**
+   * Is this a device where Add to Home Screen is the *only* route to fullscreen?
+   *
+   * iPhone Safari exposes no Fullscreen API — `requestFullscreen` is undefined
+   * on every element and `webkitRequestFullscreen` is not there either; only
+   * `<video>` can go fullscreen, via `webkitEnterFullscreen`. iPad Safari does
+   * support it, so this cannot be "is it iOS" — it has to be a capability test.
+   *
+   * Feature-detecting rather than sniffing also means the hint disappears by
+   * itself the day Safari ships the API.
+   */
+  private static needsHomeScreenForFullscreen(): boolean {
+    if (!window.matchMedia('(pointer: coarse)').matches) return false;
+    const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: unknown };
+    const hasApi = typeof el.requestFullscreen === 'function'
+      || typeof el.webkitRequestFullscreen === 'function';
+    return !hasApi && !Orientation.isStandalone();
+  }
+
+  /** Already launched from the home screen, so there is nothing to ask for. */
+  private static isStandalone(): boolean {
+    const nav = navigator as Navigator & { standalone?: boolean };
+    return window.matchMedia('(display-mode: fullscreen)').matches
+      || window.matchMedia('(display-mode: standalone)').matches
+      || nav.standalone === true;
+  }
+
+  /**
+   * Ask once, ever. A prompt that returns every session is worse than no
+   * prompt: the player has already decided, and repeating it just puts a wall
+   * between them and the run they pressed PLAY for.
+   */
+  private showIosHint(): void {
+    const KEY = 'bounce.ios.hintSeen';
+    if (localStorage.getItem(KEY) === '1') return;
+    const host = document.getElementById('ios-hint');
+    if (!host) return;
+    host.hidden = false;
+    const dismiss = () => {
+      host.hidden = true;
+      localStorage.setItem(KEY, '1');
+    };
+    document.getElementById('ios-hint-close')?.addEventListener('click', dismiss, { once: true });
+    host.addEventListener('click', (e) => { if (e.target === host) dismiss(); }, { once: true });
+  }
+
   private async requestFullscreen(): Promise<void> {
     const el = document.documentElement as HTMLElement & {
       webkitRequestFullscreen?: () => Promise<void> | void;

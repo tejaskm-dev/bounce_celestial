@@ -90,6 +90,9 @@ function init() {
         window.setTimeout(() => {
           game.endIntroAscent();
           document.body.classList.remove('loading');
+          // Offered once the title has actually arrived, so it is an offer
+          // about the game rather than an interruption of the load.
+          game.offerHomeScreenInstall();
           preloader.classList.add('dismissed');
           window.setTimeout(() => preloader.remove(), 1100);
         }, 1250);
