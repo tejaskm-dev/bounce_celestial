@@ -129,11 +129,11 @@ export class NetworkApi {
     const supabaseUrl =
       env.VITE_PUBLIC_SUPABASE_URL ||
       env.VITE_SUPABASE_URL ||
-      'http://127.0.0.1:54321';
+      'https://pnytidpsgjuuudtzrdym.supabase.co';
     const supabaseAnonKey =
       env.VITE_PUBLIC_SUPABASE_ANON_KEY ||
       env.VITE_SUPABASE_ANON_KEY ||
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.empty';
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBueXRpZHBzZ2p1dXVkdHpyZHltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4MzQ4NjUsImV4cCI6MjEwMzQxMDg2NX0.3dmxKFhZ4NSNqQcCmUHu86qElUJX52AmS4FkIl6yKYs';
 
     try {
       if (supabaseUrl && supabaseAnonKey && supabaseUrl.startsWith('http')) {
