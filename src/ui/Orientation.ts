@@ -36,10 +36,41 @@ export class Orientation {
   get blocked(): boolean { return this.gated; }
 
   /**
-   * Ask the browser to hold landscape. Only meaningful from a user gesture and
-   * usually only inside fullscreen, so failures are expected and ignored — the
-   * overlay covers every case this does not.
+   * Go fullscreen and hold landscape.
+   *
+   * Called from the PLAY press, and deliberately not from the first touch
+   * anywhere. Both APIs need a user gesture, so it has to hang off a click
+   * either way — but a player poking at settings, picking a chassis or reading
+   * the guide has not asked to lose their browser chrome, and taking it from
+   * them for that is hostile. Pressing PLAY is unambiguous.
+   *
+   * Order matters: on Android the orientation lock only resolves *inside*
+   * fullscreen, so the lock is attempted after the request settles rather than
+   * alongside it.
+   *
+   * Every step here is allowed to fail. iOS Safari has no Fullscreen API on
+   * iPhone at all, and no browser guarantees the lock — the rotate gate is the
+   * mechanism that actually holds landscape, and this is the upgrade on top.
    */
+  async enterImmersive(): Promise<void> {
+    await this.requestFullscreen();
+    await this.requestLock();
+  }
+
+  private async requestFullscreen(): Promise<void> {
+    const el = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void> | void;
+    };
+    const doc = document as Document & { webkitFullscreenElement?: Element | null };
+    if (document.fullscreenElement || doc.webkitFullscreenElement) return;
+    try {
+      if (el.requestFullscreen) await el.requestFullscreen({ navigationUI: 'hide' });
+      else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+    } catch {
+      /* Refused, unsupported, or the gesture had already been spent. */
+    }
+  }
+
   async requestLock(): Promise<void> {
     if (!this.isTouch) return;
     type LockableOrientation = ScreenOrientation & { lock?: (o: string) => Promise<void> };

@@ -316,7 +316,10 @@ export class Game {
   }
 
   private startIntroOrCountdown(): void {
-    void this.orientation.requestLock();
+    // Fullscreen for the session, not for the run: leaving and re-entering on
+    // every retry would be worse than never entering at all. Nothing here is
+    // awaited — a refused request must not delay the countdown.
+    void this.orientation.enterImmersive();
     this.titleScreen.hide();
     this.gameOverScreen.hide();
     this.infoModal.hide();
