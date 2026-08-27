@@ -432,16 +432,27 @@ export class NetworkApi {
     }
 
     try {
+      const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
       const { error } = await this.supabase.auth.signInWithOtp({
         email,
         options: {
           shouldCreateUser: true,
+          emailRedirectTo: origin,
         },
       });
-      if (error) return { error: error.message };
+      if (error) {
+        if (error.message?.includes('Failed to fetch')) {
+          return { error: 'CORS/Network error. Add http://localhost:5173 to Supabase Redirect URLs.' };
+        }
+        return { error: error.message };
+      }
       return { error: null };
     } catch (e: any) {
-      return { error: e.message || 'Linking request failed' };
+      const msg = e.message || 'Linking request failed';
+      if (msg.includes('Failed to fetch')) {
+        return { error: 'CORS/Network error. Add http://localhost:5173 to Supabase Redirect URLs.' };
+      }
+      return { error: msg };
     }
   }
 
