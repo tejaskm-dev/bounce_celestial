@@ -15,6 +15,9 @@ import {
   SlidingHazardBlock,
   SpinningSawDisc,
   SweepBarHazard,
+  CenserPendulum,
+  VeilBanner,
+  HaloRing,
 } from './Obstacles';
 
 /**
@@ -62,6 +65,27 @@ function coinArc(
     seg.addObstacle(new BonusScoreGem(x, y, z0 + speed * t));
   }
 }
+
+/**
+ * Height of the bounce arc at fraction `f` of its flight, for a given apex.
+ *
+ * Hazards were authored at y=0 and the ball peaks at 8 on an idle bounce and
+ * 16 on a committed one, so the whole hazard set could be flown over. Placing
+ * a hazard means naming a point on the arc it should intersect, and this is
+ * the same parabola coinArc() uses — so a coin run and the hazard guarding it
+ * are guaranteed to agree about where the player will be.
+ */
+export function arcY(apex: number, f: number): number {
+  const g = (8 * CONSTANTS.JUMP_APEX) / (CONSTANTS.JUMP_AIRTIME * CONSTANTS.JUMP_AIRTIME);
+  const v0 = Math.sqrt(2 * g * apex);
+  const t = f * ((2 * v0) / g);
+  return CONSTANTS.ROAD_Y + 0.5 + CONSTANTS.BALL_RADIUS + v0 * t - 0.5 * g * t * t;
+}
+
+/** Mid-arc height of an idle bounce — where the ball spends most of its time. */
+export const MID_IDLE = arcY(CONSTANTS.BOUNCE_MIN_APEX, 0.5);
+/** Just under the top of a committed bounce. */
+export const HIGH_COMMIT = arcY(CONSTANTS.JUMP_APEX, 0.5) - 2.0;
 
 export class ModuleFactory {
   /**
@@ -205,6 +229,11 @@ export class ModuleFactory {
     seg.addObstacle(new TrackPlatform(0, 0, 70, 10, 18, HEX.alabaster));
     seg.addObstacle(new BouncePad(0, 0.5, 70));
 
+    // A leap module with nothing in the air was a straight line with a gap in
+    // it. The ring sits at the top of the committed arc, so the jump that
+    // clears the gap is also the jump that has to be aimed.
+    seg.addObstacle(new HaloRing(0, HIGH_COMMIT, 40, 4.0, 0.9, 0, 1.0, 0));
+
     return seg;
   }
 
@@ -232,6 +261,12 @@ export class ModuleFactory {
     seg.addObstacle(new BonusScoreGem(4.5, 4.5, 25));
     seg.addObstacle(new BonusScoreGem(-4.5, 4.5, 43));
 
+    // The ground blocks below only threaten a player who is already low. These
+    // hang in the middle of the bounce, out of phase with each other, so the
+    // safe lane moves while you are in the air and cannot change your mind.
+    seg.addObstacle(new CenserPendulum(0, MID_IDLE, 26, 5.0, 0.9, 1.5, 0));
+    seg.addObstacle(new CenserPendulum(0, MID_IDLE, 50, 5.0, 0.9, 1.7, Math.PI * 0.6));
+
     return seg;
   }
 
@@ -255,6 +290,12 @@ export class ModuleFactory {
 
     seg.addObstacle(new BonusScoreGem(0, 5.0, 28));
     seg.addObstacle(new BonusScoreGem(0, 5.0, 48));
+
+    // Saws own the floor; these own the air above them. Threading a ring means
+    // committing to one apex, which is the first place in the course where
+    // bounce height is a choice with a wrong answer.
+    seg.addObstacle(new HaloRing(0, MID_IDLE + 0.5, 28, 3.6, 0.85, 0, 1.0, 0));
+    seg.addObstacle(new HaloRing(0, MID_IDLE + 0.5, 48, 3.4, 0.85, 5.5, 1.2, Math.PI * 0.5));
 
     return seg;
   }
@@ -357,6 +398,8 @@ export class ModuleFactory {
     seg.addObstacle(new BonusScoreGem(-5.25, 4.5, 34));
     seg.addObstacle(new BonusScoreGem(5.25, 4.5, 42));
 
+    seg.addObstacle(new CenserPendulum(0, MID_IDLE, 38, 5.2, 0.75, 1.4, Math.PI * 0.35));
+
     return seg;
   }
 
@@ -382,6 +425,12 @@ export class ModuleFactory {
 
     seg.addObstacle(new BonusScoreGem(0, 5.0, 36));
 
+    // The ceiling. Holding for height has been the right answer to every hazard
+    // so far; here it walks you into the silk. The gaps between banners let a
+    // player keep their height by moving sideways instead of dropping.
+    seg.addObstacle(new VeilBanner(30, HIGH_COMMIT - 2.5, 26, [[-10, 3.4], [1.5, 3.4]], 0.5, 0));
+    seg.addObstacle(new VeilBanner(62, HIGH_COMMIT - 2.5, 26, [[-1.5, 3.4], [10, 3.4]], 0.5, 1.4));
+
     return seg;
   }
 
@@ -406,6 +455,13 @@ export class ModuleFactory {
     seg.addObstacle(new BonusScoreGem(-4.2, 4.5, 24));
     seg.addObstacle(new BonusScoreGem(4.2, 4.5, 42));
 
+    // The module that owes the player everything at once: hazards on the floor,
+    // a censer through the middle, a banner across the top. No single height
+    // survives this segment.
+    seg.addObstacle(new CenserPendulum(0, MID_IDLE - 1.0, 24, 4.6, 1.0, 1.9, 0.4));
+    seg.addObstacle(new VeilBanner(48, HIGH_COMMIT - 1.5, 26, [[-11, 3.0], [0, 3.0], [11, 3.0]], 0.6, 0));
+    seg.addObstacle(new HaloRing(0, MID_IDLE + 1.0, 68, 3.3, 0.8, 4.0, 1.3, Math.PI));
+
     return seg;
   }
 
@@ -425,6 +481,13 @@ export class ModuleFactory {
     seg.addObstacle(new BonusScoreGem(0, 4.5, 20));
     seg.addObstacle(new BonusScoreGem(0, 4.5, 40));
     seg.addObstacle(new BonusScoreGem(0, 4.5, 60));
+
+    // This module was a clear straight road, which at speed meant holding for
+    // height and reading nothing at all. The banners break the run into three
+    // reads, each asking for a different lane at a lower altitude.
+    seg.addObstacle(new VeilBanner(22, HIGH_COMMIT - 3.0, 26, [[-8, 4.0]], 0.45, 0));
+    seg.addObstacle(new VeilBanner(46, HIGH_COMMIT - 3.0, 26, [[8, 4.0]], 0.45, 0.9));
+    seg.addObstacle(new VeilBanner(70, HIGH_COMMIT - 3.0, 26, [[0, 4.6]], 0.45, 1.8));
 
     return seg;
   }

@@ -33,9 +33,25 @@ export const CONSTANTS = {
   MAX_COURSE_WIDTH: 26.0,
 
   // Speed & Motion (Calibrated arcade pacing)
-  BASE_SPEED: 32,               // Starting forward speed (~74 km/h)
+  // Speed, airtime and the ramp now live in config/Difficulty.ts as bands on
+  // one curve. BASE_SPEED and MAX_SPEED are kept because the coin arcs, the
+  // fairness probe and the run validator all reference them as the outer
+  // bounds of what the ball can ever do — they are limits, not the ramp.
+  BASE_SPEED: 32,               // Reference speed for authored coin arcs
   MAX_SPEED: 78,                // Top forward speed ramp (~180 km/h)
-  SPEED_RAMP_SECONDS: 145,      // Seconds of survival to reach max baseline speed
+  // Seconds of survival to reach max baseline speed.
+  //
+  // Was 145, against an arcade run that finishes in about 35 seconds. Measured
+  // mid-run: at t=10s the ball was doing 37 u/s of a possible 78, and it
+  // crossed the finish line around 46 — so players never met the back 60% of
+  // the speed range the whole game is tuned around. The ramp now completes
+  // inside a full run, which is what makes the last third feel like the last
+  // third.
+  // 62 was tuned against a 49-second course. A five-minute run reaching top
+  // speed a fifth of the way in would spend the other four minutes on a flat
+  // difficulty line, so the ramp now completes around the three-minute mark:
+  // the first 60% of the run is the climb, the last 40% is flat out.
+  SPEED_RAMP_SECONDS: 170,
   PERFECT_BOOST_SURGE: 5.2,     // Speed added by a Perfect Bounce
   BOOST_CAP: 16,                // Max bonus boost above baseline
   BOOST_DECAY: 2.6,             // Boost decay per second

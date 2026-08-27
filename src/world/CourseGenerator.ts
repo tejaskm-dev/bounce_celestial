@@ -1,9 +1,13 @@
 import * as THREE from 'three';
 import { HEX } from '../rendering/Palette';
 import { CourseSegment } from './CourseSegment';
-import { ModuleFactory } from './Modules';
-import { CollisionResult, TrackPlatform, BouncePad, SpringPad, CollapsingPlatform } from './Obstacles';
+import { ModuleFactory, MID_IDLE, HIGH_COMMIT } from './Modules';
+import {
+  CollisionResult, TrackPlatform, BouncePad, SpringPad, CollapsingPlatform,
+  CenserPendulum, VeilBanner, HaloRing,
+} from './Obstacles';
 import { CONSTANTS } from '../config/constants';
+import { difficultyAt, bandAt, progressOf } from '../config/Difficulty';
 import { GameModeId, GAME_MODES, getDailySeed } from '../config/modes';
 
 /**
@@ -62,6 +66,86 @@ export class CourseGenerator {
     }
   }
 
+  /**
+   * Weighted module selection.
+   *
+   * This used to be a ladder of four `if (dist < N)` tiers with hard-coded
+   * probabilities, which had three problems. It could not follow a change in
+   * course length without every threshold being retuned by hand. It let one
+   * module dominate — causeway was 11 of 40 segments, 27% of a course whose
+   * whole complaint was sameness. And `createCollapsingBridge` was authored,
+   * exported, and appeared in no tier at all, so it had never once been played.
+   *
+   * A weight curve per module fixes all three: `progress` is 0..1 through the
+   * run whatever its length, each module lerps between an early and a late
+   * weight, and adding one is a row rather than a rebalance.
+   */
+  private static readonly MODULE_TABLE: {
+    id: string;
+    make: (g: CourseGenerator) => CourseSegment;
+    /** Weight at the start of the run, and at the end. */
+    early: number; late: number;
+    /** Not offered before this fraction of the course. */
+    from?: number;
+  }[] = [
+    // Road. Still the connective tissue, but it can no longer be a third of
+    // the course — and it thins out as the run goes on.
+    { id: 'causeway',   early: 30, late: 6,  make: (g) => ModuleFactory.createCauseway(g.segmentCount % 3) },
+    { id: 'plaza',      early: 14, late: 5,  make: () => ModuleFactory.createOpenPlaza() },
+
+    // Early teachers.
+    { id: 'serpentine', early: 10, late: 8,  make: () => ModuleFactory.createSerpentineIslands() },
+    { id: 'slalom',     early: 9,  late: 9,  make: () => ModuleFactory.createSlalomHazard(), from: 0.04 },
+    { id: 'airtime',    early: 7,  late: 8,  make: () => ModuleFactory.createAirtimeLeap(), from: 0.06 },
+
+    // Middle game.
+    { id: 'sawline',    early: 4,  late: 10, make: () => ModuleFactory.createSawline(), from: 0.10 },
+    { id: 'collapsing', early: 3,  late: 10, make: () => ModuleFactory.createCollapsingBridge(), from: 0.12 },
+    { id: 'split',      early: 2,  late: 9,  make: () => ModuleFactory.createSplitRisk(), from: 0.16 },
+    { id: 'pinball',    early: 2,  late: 9,  make: () => ModuleFactory.createPinballAlley(), from: 0.18 },
+    { id: 'sweep',      early: 1,  late: 9,  make: () => ModuleFactory.createSweepBarChamber(), from: 0.22 },
+
+    // Late game.
+    { id: 'speed',      early: 0,  late: 10, make: () => ModuleFactory.createSpeedRunway(), from: 0.34 },
+    { id: 'gauntlet',   early: 0,  late: 13, make: () => ModuleFactory.createGauntlet(), from: 0.42 },
+    { id: 'chaos',      early: 0,  late: 16, make: () => ModuleFactory.createChaosGauntlet(), from: 0.55 },
+  ];
+
+  /** The last two module ids played, for the repeat rule. */
+  private recent: string[] = [];
+
+  private pickModule(progress: number): CourseSegment {
+    // Through the curve, not the raw fraction. Weights lerped on raw progress
+    // ramped linearly while speed and gaps ramped on a shaped curve, so the
+    // module mix and the pace they were tuned against pulled apart.
+    const t = difficultyAt(progress);
+    const table = CourseGenerator.MODULE_TABLE;
+
+    let total = 0;
+    const weights: number[] = [];
+    for (const m of table) {
+      let w = (m.from !== undefined && t < m.from) ? 0 : m.early + (m.late - m.early) * t;
+      // No module twice in a row, and none three times in the last three. A
+      // weighted draw without this produces visible clumps — two causeways
+      // back to back reads as the generator having stopped.
+      if (w > 0 && this.recent[this.recent.length - 1] === m.id) w *= 0.06;
+      else if (w > 0 && this.recent.includes(m.id)) w *= 0.45;
+      weights.push(w);
+      total += w;
+    }
+
+    let r = this.nextRandom() * total;
+    let pick = table[0];
+    for (let i = 0; i < table.length; i++) {
+      r -= weights[i];
+      if (r <= 0) { pick = table[i]; break; }
+    }
+
+    this.recent.push(pick.id);
+    if (this.recent.length > 3) this.recent.shift();
+    return pick.make(this);
+  }
+
   private spawnNextSegment(): void {
     const dist = this.nextSpawnZ;
     const modeConfig = GAME_MODES[this.currentMode];
@@ -82,47 +166,97 @@ export class CourseGenerator {
       return;
     }
 
-    const r = this.nextRandom();
-
-    // Road first, platforms as punctuation.
-    //
-    // Every tier used to be island-hopping, so the game was one correct line
-    // from start to finish with nowhere to move. The causeway is now the
-    // default surface and the platform modules are the exception — they read
-    // as a deliberate change of terrain instead of being the whole game.
-    const causewayVariant = this.segmentCount % 3;
-
-    if (dist < 180) {
-      // Opening: road only, so the player learns to move before they learn to
-      // survive. One island module at the end as a first taste.
-      if (r < 0.7) seg = ModuleFactory.createCauseway(causewayVariant);
-      else seg = ModuleFactory.createOpenPlaza();
-    } else if (dist < 450) {
-      if (r < 0.45) seg = ModuleFactory.createCauseway(causewayVariant);
-      else if (r < 0.60) seg = ModuleFactory.createOpenPlaza();
-      else if (r < 0.75) seg = ModuleFactory.createSlalomHazard();
-      else if (r < 0.90) seg = ModuleFactory.createSawline();
-      else seg = ModuleFactory.createSerpentineIslands();
-    } else if (dist < 800) {
-      if (r < 0.38) seg = ModuleFactory.createCauseway(causewayVariant);
-      else if (r < 0.50) seg = ModuleFactory.createOpenPlaza();
-      else if (r < 0.62) seg = ModuleFactory.createSplitRisk();
-      else if (r < 0.74) seg = ModuleFactory.createSweepBarChamber();
-      else if (r < 0.86) seg = ModuleFactory.createPinballAlley();
-      else seg = ModuleFactory.createAirtimeLeap();
-    } else {
-      if (r < 0.32) seg = ModuleFactory.createCauseway(causewayVariant);
-      else if (r < 0.42) seg = ModuleFactory.createOpenPlaza();
-      else if (r < 0.58) seg = ModuleFactory.createChaosGauntlet();
-      else if (r < 0.72) seg = ModuleFactory.createGauntlet();
-      else if (r < 0.86) seg = ModuleFactory.createSpeedRunway();
-      else seg = ModuleFactory.createSerpentineIslands();
-    }
+    seg = this.pickModule(progressOf(dist, modeConfig.finishDistance));
 
     this.attachSegment(seg);
   }
 
+  /**
+   * Scatter aerial hazards across a freshly-placed segment.
+   *
+   * Authoring them into individual modules left only a quarter of segments
+   * with anything in the air, and — worse — the three modules the player meets
+   * most (causeway, plaza, serpentine, which between them are over half the
+   * course) had none at all. The result was that the flat road, where you
+   * spend the most time, was also the place where holding for height cost
+   * nothing.
+   *
+   * Making this a pass over every segment rather than a property of some
+   * modules means coverage is a number we choose instead of a lottery the
+   * module table happens to run. Density scales with difficulty, and modules
+   * that are already dense on the ground get proportionally less, so the total
+   * threat curve stays smooth instead of spiking on the busy modules.
+   */
+  private garnishAerial(seg: CourseSegment): void {
+    // The opening runway teaches movement, and the finish is a victory lap.
+    if (seg.moduleType === 'starter' || seg.moduleType === 'finish') return;
+
+    const d = this.difficulty;
+    // How crowded the floor already is, as a share of a "busy" module.
+    const groundLoad = Math.min(1, seg.obstacles.filter((o) => o.isLethal).length / 6);
+    const budget = bandAt('aerialBudget', d) * (1 - groundLoad * 0.55);
+
+    let count = Math.floor(budget);
+    if (this.nextRandom() < budget - count) count++;
+    if (count <= 0) return;
+
+    // Spread across the segment with a margin at each seam, so two adjacent
+    // segments cannot stack hazards on top of each other at the boundary.
+    const usable = seg.length - 24;
+    for (let i = 0; i < count; i++) {
+      const z = 12 + usable * ((i + 0.5 + (this.nextRandom() - 0.5) * 0.5) / count);
+      if (this.hasHazardNear(seg, z, 11)) continue;
+      this.placeAerial(seg, z, d);
+    }
+  }
+
+  /** Is there already a lethal obstacle within `span` of this z in-segment? */
+  private hasHazardNear(seg: CourseSegment, z: number, span: number): boolean {
+    for (const o of seg.obstacles) {
+      if (o.isLethal && Math.abs(o.position.z - z) < span) return true;
+    }
+    return false;
+  }
+
+  private placeAerial(seg: CourseSegment, z: number, d: number): void {
+    const r = this.nextRandom();
+    const lane = (this.nextRandom() - 0.5) * 16;
+
+    // The mix moves up the arc as the run goes on. Censers first, because a
+    // swinging object teaches "the air is not safe" without demanding a new
+    // input; rings next, which ask for a specific apex; banners last, which
+    // are the ones that punish holding for height and only make sense once
+    // holding for height is a habit.
+    const ringOdds = 0.20 + d * 0.22;
+    const bannerOdds = d < 0.28 ? 0 : 0.12 + d * 0.30;
+
+    if (r < bannerOdds) {
+      // Never span the full width: a banner is meant to cost you altitude or a
+      // lane, never to be an unavoidable wall.
+      const side = this.nextRandom() < 0.5 ? -1 : 1;
+      const bands: [number, number][] = this.nextRandom() < 0.45
+        ? [[side * 9.5, 3.6]]
+        : [[side * 11, 3.2], [side * -1.5, 3.0]];
+      seg.addObstacle(new VeilBanner(
+        z, HIGH_COMMIT - 2.0 - this.nextRandom() * 2.5, 26, bands,
+        0.45, this.nextRandom() * 6));
+    } else if (r < bannerOdds + ringOdds) {
+      seg.addObstacle(new HaloRing(
+        lane * 0.6, MID_IDLE + (this.nextRandom() - 0.4) * 4, z,
+        3.3 + this.nextRandom() * 0.8, 0.85,
+        d > 0.5 ? this.nextRandom() * 5 : 0,
+        1.0 + this.nextRandom() * 0.5, this.nextRandom() * 6));
+    } else {
+      seg.addObstacle(new CenserPendulum(
+        lane * 0.4, MID_IDLE - 1.5 + this.nextRandom() * 3, z,
+        4.4 + this.nextRandom() * 1.4,
+        0.65 + d * 0.4, 1.3 + this.nextRandom() * 0.7,
+        this.nextRandom() * 6));
+    }
+  }
+
   private attachSegment(seg: CourseSegment): void {
+    this.garnishAerial(seg);
     seg.setPosition(this.nextSpawnZ);
     this.activeSegments.push(seg);
     this.group.add(seg.group);
@@ -174,10 +308,12 @@ export class CourseGenerator {
    * platforms across it. One extra platform always beats one impossible jump.
    */
   private guaranteeCoverage(fromZ: number, toZ: number): void {
-    const airtime = THREE.MathUtils.lerp(
-      CONSTANTS.AIRTIME_START, CONSTANTS.AIRTIME_END, this.difficulty);
-    // 0.72 leaves headroom for a player who is off the ideal line or mistimed.
-    const maxHop = this.currentSpeed * airtime * 0.72;
+    const airtime = bandAt('airtime', this.difficulty);
+    // Headroom against the true maximum hop. Early gaps stay forgiving for a
+    // player still off the ideal line; late ones close to within 12%, so the
+    // same generator produces a demanding course without a second ruleset.
+    const headroom = bandAt('gapHeadroom', this.difficulty);
+    const maxHop = this.currentSpeed * airtime * headroom;
     const step = 2;
 
     let gapStart: number | null = null;
@@ -330,13 +466,23 @@ export class CourseGenerator {
     return best;
   }
 
-  public isLethalHazardAt(x: number, z: number): boolean {
+  /**
+   * Is a lethal hazard occupying (x, z) at height `y`?
+   *
+   * `y` defaults to the deck, because every caller that predates the aerial
+   * hazards is asking about the floor.
+   */
+  public isLethalHazardAt(
+    x: number, z: number,
+    y: number = CONSTANTS.ROAD_Y + CONSTANTS.BALL_RADIUS,
+  ): boolean {
     for (let i = 0; i < this.activeSegments.length; i++) {
       const seg = this.activeSegments[i];
       if (z < seg.startZ - 4 || z > seg.endZ + 4) continue;
       const localZ = z - seg.startZ;
       for (const obs of seg.obstacles) {
         if (!obs.isActive || !obs.isLethal) continue;
+        if (y < obs.hazardMinY || y > obs.hazardMaxY) continue;
         const dist = Math.hypot(x - obs.position.x, localZ - obs.position.z);
         if (dist <= 3.2) return true;
       }

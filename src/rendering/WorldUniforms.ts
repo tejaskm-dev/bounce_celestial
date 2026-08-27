@@ -54,8 +54,8 @@ export const worldUniforms = {
 // two bounces — at base speed 110 units is roughly three seconds of road —
 // but everything past that is committed to the mist and assembles as they
 // close on it, which is the whole "into the unknown" intent.
-const FOG_NEAR_BASE = 110;
-const FOG_FAR_BASE = 520;
+export const FOG_NEAR_BASE = 110;
+export const FOG_FAR_BASE = 520;
 
 /**
  * How far to push fog out as speed climbs.

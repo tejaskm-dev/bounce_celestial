@@ -23,6 +23,14 @@ page.on('pageerror', e => console.error('[ERR]', e.message));
 await page.goto('http://127.0.0.1:5180', { waitUntil: 'networkidle' });
 await page.waitForTimeout(1000);
 if (SHOTS) await page.screenshot({ path: path.join(outDir, 'a_title.png') });
+// The gold preloader holds a full-screen layer until the first frames land,
+// and the username prompt appears for a profile that has never been named.
+// Both intercept the click, so wait one out and dismiss the other.
+await page.waitForFunction(() => !document.getElementById('preloader'), null, { timeout: 30000 });
+await page.evaluate(() => {
+  const m = document.getElementById('modal-username');
+  if (m) m.style.display = 'none';
+});
 await page.click('#btn-start');
 
 await page.evaluate((rescue) => {

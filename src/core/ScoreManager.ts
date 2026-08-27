@@ -132,12 +132,12 @@ export class ScoreManager {
     trickScore += trickData.spins * CONSTANTS.SPIN_TRICK_SCORE;
     trickScore += Math.floor(trickData.airTime * 300);
 
-    if (trickData.tricks.includes('AIR DASH')) {
-      trickScore += 400;
-    }
-    if (trickData.tricks.includes('BIG AIR')) {
-      trickScore += 800;
-    }
+    if (trickData.tricks.includes('AIR DASH')) trickScore += 400;
+    if (trickData.tricks.includes('BIG AIR')) trickScore += 800;
+    if (trickData.tricks.includes('CORKSCREW')) trickScore += 400;
+    if (trickData.tricks.includes('BACKFLIP')) trickScore += 500;
+    if (trickData.tricks.includes('COMET SPIN')) trickScore += 700;
+    if (trickData.tricks.includes('RAIL GRIND')) trickScore += 600;
 
     const totalAward = Math.round(trickScore * this.multiplier);
     this.score += totalAward;

@@ -4,16 +4,23 @@ import { CelShaders } from '../rendering/CelShaders';
 import { SKINS, SkinDefinition } from '../config/palettes';
 import { CONSTANTS } from '../config/constants';
 
+export type ExpressionType =
+  | 'normal'
+  | 'squint'
+  | 'shock'
+  | 'dizzy'
+  | 'cool'
+  | 'happy'
+  | 'focus'
+  | 'determined'
+  | 'strain'
+  | 'delight'
+  | 'smug'
+  | 'panic'
+  | 'sleepy';
+
 /**
  * Protagonist Kinetic Ball Entity with Deformable Mesh & Inertia Gyro Suspension
- * Features:
- * - Dynamic volume-preserving squash & stretch spring physics with impact-scaled stiffness
- * - Secondary slower harmonic wobble for organic shell oscillation
- * - Inertia-lagged gyro hoop and satellite nubs (compliantly follows deformation with soft catch-up)
- * - Directional aerodynamic silhouettes for Air Dash and Heavy Ground Slam
- * - Smoothly blended expressive anime face with real-time gaze / pupil tracking
- * - Pre-launch compression coil and steering lean anticipation
- * - 100% simulation-driven timers (zero setTimeout / wall-clock bugs)
  */
 export class Ball {
   public group: THREE.Group;
@@ -48,7 +55,19 @@ export class Ball {
   public rollRotation: number = 0;
   public trickSpinAngle: number = 0;
   public trickFlipAngle: number = 0;
+  public trickRollAngle: number = 0;
   public trickNames: string[] = [];
+  public activeTrick: 'none' | 'corkscrew' | 'backflip' | 'comet' | 'slam' | 'grind' = 'none';
+  public trickRecoveryWeight: number = 0.0;
+
+  // Heading, Lean, Pitch & Anticipation Rig
+  public leanAngle: number = 0;
+  public pitchAngle: number = 0;
+  public anticipationLean: number = 0;
+  public railGrindLean: number = 0;
+  public railGrindSide: number = 0;
+  private prevSteerInput: number = 0;
+  public committedLaunchVy: number = 22;
 
   // Volume-Preserving Squash & Stretch Spring Physics
   private stretch: number = 1.0;
@@ -66,8 +85,6 @@ export class Ball {
   private rollAngle: number = 0;
   private hoopSpinAngle: number = 0;
   private precessAngle: number = 0;
-  private leanAngle: number = 0;
-  private prevSteerInput: number = 0;
 
   // Face Decal, Expressions & Pupil Tracking
   private faceAnchor: THREE.Group;
@@ -76,15 +93,25 @@ export class Ball {
   private faceTex: THREE.CanvasTexture;
   private faceMat: THREE.MeshBasicMaterial;
 
-  public currentExpression: 'normal' | 'squint' | 'shock' | 'dizzy' | 'cool' | 'happy' | 'focus' = 'normal';
+  public currentExpression: ExpressionType = 'normal';
   private expressionTimer: number = 0;
+  private expressionCooldown: number = 0;
   private blinkTimer: number = 2.5;
   private blinkAmount: number = 0;
+
+  // Expression blend weights
   private squintWeight: number = 0;
   private happyWeight: number = 0;
   private shockWeight: number = 0;
   private dizzyWeight: number = 0;
   private coolWeight: number = 0;
+  private determinedWeight: number = 0;
+  private strainWeight: number = 0;
+  private delightWeight: number = 0;
+  private smugWeight: number = 0;
+  private panicWeight: number = 0;
+  private sleepyWeight: number = 0;
+
   private dizzyAngle: number = 0;
   private pupilX: number = 0;
   private pupilY: number = 0;
@@ -326,18 +353,22 @@ export class Ball {
   }
 
   /**
-   * Sets face expression with a simulation-driven duration (zero setTimeout).
+   * Sets face expression with rate-limiting and hold duration.
    */
   public setFaceExpression(
-    expression: 'normal' | 'squint' | 'shock' | 'dizzy' | 'cool' | 'happy' | 'focus',
+    expression: ExpressionType,
+    force = false,
     duration: number = 0.35
   ): void {
+    if (!force && this.expressionCooldown > 0 && expression === 'normal') return;
+    if (this.currentExpression === expression && this.expressionTimer > 0) return;
     this.currentExpression = expression;
     this.expressionTimer = duration;
+    this.expressionCooldown = 0.25;
   }
 
   /**
-   * Procedurally draws smoothly blended button-eye face with gaze/pupil tracking.
+   * Procedurally draws smoothly blended anime button-eye face with gaze/pupil tracking.
    */
   private renderFaceCanvas(): void {
     const ctx = this.faceCtx;
@@ -354,11 +385,25 @@ export class Ball {
     const shock = Math.max(0, Math.min(1, this.shockWeight));
     const dizzy = Math.max(0, Math.min(1, this.dizzyWeight));
     const cool = Math.max(0, Math.min(1, this.coolWeight));
-    const effectiveBlink = Math.max(this.blinkAmount, squint, happy * 0.85);
+    const determined = Math.max(0, Math.min(1, this.determinedWeight));
+    const strain = Math.max(0, Math.min(1, this.strainWeight));
+    const delight = Math.max(0, Math.min(1, this.delightWeight));
+    const smug = Math.max(0, Math.min(1, this.smugWeight));
+    const panic = Math.max(0, Math.min(1, this.panicWeight));
+    const sleepy = Math.max(0, Math.min(1, this.sleepyWeight));
 
-    // 1. Cheek Blushes (expand and brighten on happy/cool)
-    const blushAlpha = 0.45 + happy * 0.35 + cool * 0.15;
-    const blushR = 17 + happy * 6;
+    const effectiveBlink = Math.max(
+      this.blinkAmount,
+      squint,
+      happy * 0.85,
+      delight * 0.9,
+      strain * 0.95,
+      sleepy * 0.65
+    );
+
+    // 1. Cheek Blushes (expand and brighten on happy/cool/delight)
+    const blushAlpha = 0.45 + happy * 0.35 + delight * 0.4 + cool * 0.15 + smug * 0.2;
+    const blushR = 17 + happy * 6 + delight * 8;
     ctx.fillStyle = `rgba(201, 154, 160, ${blushAlpha.toFixed(2)})`;
     ctx.beginPath();
     ctx.ellipse(cx - 60, eyeY + 34, blushR, 10 + happy * 3, 0, 0, Math.PI * 2);
@@ -368,7 +413,41 @@ export class Ball {
     ctx.ellipse(cx + 60, eyeY + 34, blushR, 10 + happy * 3, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // 2. Eyes
+    // 2. Eyebrows (Determined / Strain / Smug / Panic)
+    if (determined > 0.2 || strain > 0.2 || smug > 0.2 || panic > 0.2) {
+      ctx.strokeStyle = hexCss(HEX.ink);
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+
+      // Left Brow
+      ctx.beginPath();
+      if (smug > 0.3) {
+        // High arched smug left eyebrow
+        ctx.arc(cx - eyeSpacing, eyeY - 22, 16, Math.PI * 1.15, Math.PI * 1.85, false);
+      } else if (panic > 0.3) {
+        // Upward arched panic eyebrows
+        ctx.moveTo(cx - eyeSpacing - 14, eyeY - 18);
+        ctx.lineTo(cx - eyeSpacing + 14, eyeY - 26);
+      } else {
+        // Angled determined / strain sharp brow
+        ctx.moveTo(cx - eyeSpacing - 16, eyeY - 24);
+        ctx.lineTo(cx - eyeSpacing + 14, eyeY - 18);
+      }
+      ctx.stroke();
+
+      // Right Brow
+      ctx.beginPath();
+      if (panic > 0.3) {
+        ctx.moveTo(cx + eyeSpacing - 14, eyeY - 26);
+        ctx.lineTo(cx + eyeSpacing + 14, eyeY - 18);
+      } else {
+        ctx.moveTo(cx + eyeSpacing - 14, eyeY - 18);
+        ctx.lineTo(cx + eyeSpacing + 16, eyeY - 24);
+      }
+      ctx.stroke();
+    }
+
+    // 3. Eyes
     const eyeLeftX = cx - eyeSpacing;
     const eyeRightX = cx + eyeSpacing;
 
@@ -400,30 +479,63 @@ export class Ball {
         return;
       }
 
-      // Shock: wide shocked eye with tiny pupil
-      if (shock > 0.4) {
-        const shockRadius = eyeRadius * (1.1 + shock * 0.25);
+      // Panic / Shock: giant wide shocked eye with dilated or tiny pupil
+      if (shock > 0.4 || panic > 0.4) {
+        const rad = eyeRadius * (1.15 + (shock + panic) * 0.2);
         ctx.fillStyle = hexCss(HEX.ink);
         ctx.beginPath();
-        ctx.arc(ex, ey, shockRadius, 0, Math.PI * 2);
+        ctx.arc(ex, ey, rad, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.strokeStyle = hexCss(HEX.marbleDim);
         ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.arc(ex, ey, shockRadius - 3, 0, Math.PI * 2);
+        ctx.arc(ex, ey, rad - 3, 0, Math.PI * 2);
         ctx.stroke();
 
-        // Tiny cross
-        ctx.strokeStyle = hexCss(HEX.white);
-        ctx.lineWidth = 4;
+        if (panic > 0.4) {
+          // Giant trembling dilated pupil with tiny glint
+          ctx.fillStyle = hexCss(HEX.white);
+          ctx.beginPath();
+          ctx.arc(ex - 4, ey - 4, 3, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          // Shock tiny cross
+          ctx.strokeStyle = hexCss(HEX.white);
+          ctx.lineWidth = 4;
+          ctx.lineCap = 'round';
+          const cross = 4;
+          ctx.beginPath();
+          ctx.moveTo(ex - cross, ey - cross);
+          ctx.lineTo(ex + cross, ey + cross);
+          ctx.moveTo(ex + cross, ey - cross);
+          ctx.lineTo(ex - cross, ey + cross);
+          ctx.stroke();
+        }
+        return;
+      }
+
+      // Delight / Happy / Strain closed eyes
+      if (delight > 0.4 || (effectiveBlink > 0.5 && strain <= 0.3)) {
+        ctx.strokeStyle = hexCss(HEX.ink);
+        ctx.lineWidth = 7;
         ctx.lineCap = 'round';
-        const cross = 4;
         ctx.beginPath();
-        ctx.moveTo(ex - cross, ey - cross);
-        ctx.lineTo(ex + cross, ey + cross);
-        ctx.moveTo(ex + cross, ey - cross);
-        ctx.lineTo(ex - cross, ey + cross);
+        const startAng = Math.PI * 1.15;
+        const endAng = Math.PI * 1.85;
+        ctx.arc(ex, ey + 4, 16, startAng, endAng, false);
+        ctx.stroke();
+        return;
+      }
+
+      // Strain: tight clenched horizontal slit
+      if (strain > 0.4) {
+        ctx.strokeStyle = hexCss(HEX.ink);
+        ctx.lineWidth = 6;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(ex - 15, ey);
+        ctx.lineTo(ex + 15, ey);
         ctx.stroke();
         return;
       }
@@ -439,29 +551,23 @@ export class Ball {
         return;
       }
 
-      // Blink / Squint / Happy closed arc
-      if (effectiveBlink > 0.5) {
-        const t = (effectiveBlink - 0.5) * 2.0;
-        ctx.strokeStyle = hexCss(HEX.ink);
-        ctx.lineWidth = 7;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        const startAng = happy > 0.3 ? Math.PI * 1.15 : Math.PI * 0.9;
-        const endAng = happy > 0.3 ? Math.PI * 1.85 : Math.PI * 2.1;
-        ctx.arc(ex, ey + 3 * t, 15, startAng, endAng, false);
-        ctx.stroke();
-        return;
-      }
-
       // Normal button eye with dynamic gaze/pupil tracking
       const px = this.pupilX * 6.0;
-      const py = this.pupilY * 4.5;
+      const py = this.pupilY * 4.5 + (sleepy > 0.3 ? 3 : 0);
 
       // Button base
       ctx.fillStyle = hexCss(HEX.ink);
       ctx.beginPath();
       ctx.arc(ex, ey, eyeRadius, 0, Math.PI * 2);
       ctx.fill();
+
+      // Sleepy eyelid cover
+      if (sleepy > 0.3) {
+        ctx.fillStyle = hexCss(HEX.marbleDim);
+        ctx.beginPath();
+        ctx.arc(ex, ey, eyeRadius, Math.PI * 0.9, Math.PI * 2.1, false);
+        ctx.fill();
+      }
 
       // Inset ring
       ctx.strokeStyle = hexCss(HEX.marbleDim);
@@ -493,13 +599,60 @@ export class Ball {
     drawEye(eyeLeftX, eyeY, false);
     drawEye(eyeRightX, eyeY, true);
 
-    // 3. Stitched Mouth
+    // 4. Stitched Mouth
     ctx.strokeStyle = hexCss(HEX.ink);
     ctx.lineWidth = 6;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    if (shock > 0.3) {
+    if (delight > 0.3) {
+      // Wide open happy D-shaped grin
+      ctx.fillStyle = hexCss(HEX.ink);
+      ctx.beginPath();
+      ctx.arc(cx, eyeY + 16, 20, 0, Math.PI, false);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Pink tongue
+      ctx.fillStyle = 'rgba(235, 130, 150, 0.9)';
+      ctx.beginPath();
+      ctx.arc(cx, eyeY + 28, 10, Math.PI, 0, false);
+      ctx.fill();
+    } else if (smug > 0.3) {
+      // Asymmetric smug smirk
+      ctx.beginPath();
+      ctx.moveTo(cx - 10, eyeY + 24);
+      ctx.quadraticCurveTo(cx + 8, eyeY + 26, cx + 20, eyeY + 16);
+      ctx.stroke();
+    } else if (strain > 0.3) {
+      // Clenched teeth grimace
+      ctx.beginPath();
+      ctx.moveTo(cx - 16, eyeY + 22);
+      ctx.lineTo(cx + 16, eyeY + 22);
+      ctx.stroke();
+      // Vertical tooth stitches
+      [-8, 0, 8].forEach((tx) => {
+        ctx.moveTo(cx + tx, eyeY + 18);
+        ctx.lineTo(cx + tx, eyeY + 26);
+      });
+      ctx.stroke();
+    } else if (panic > 0.3) {
+      // Trembling wavy panic mouth
+      ctx.beginPath();
+      ctx.moveTo(cx - 14, eyeY + 24);
+      ctx.lineTo(cx - 7, eyeY + 20);
+      ctx.lineTo(cx, eyeY + 26);
+      ctx.lineTo(cx + 7, eyeY + 20);
+      ctx.lineTo(cx + 14, eyeY + 24);
+      ctx.stroke();
+    } else if (determined > 0.3) {
+      // Firm determined straight mouth
+      ctx.beginPath();
+      ctx.moveTo(cx - 14, eyeY + 24);
+      ctx.lineTo(cx + 14, eyeY + 24);
+      ctx.stroke();
+    } else if (shock > 0.3) {
       // Small cute shocked 'O' mouth
       ctx.beginPath();
       ctx.ellipse(cx, eyeY + 22, 9, 14, 0, 0, Math.PI * 2);
@@ -576,8 +729,9 @@ export class Ball {
     this.velocity.y = Math.max(this.velocity.y * 0.3, 4.5);
 
     this.impact(-0.42); // Elongate along supersonic thrust
+    this.triggerCorkscrew(dir || 1);
     this.trickNames.push('AIR DASH');
-    this.setFaceExpression('cool', 0.45);
+    this.setFaceExpression('cool', true, 0.45);
     return true;
   }
 
@@ -591,9 +745,45 @@ export class Ball {
     this.isSlamming = true;
     this.slamCooldown = CONSTANTS.SLAM_COOLDOWN;
     this.velocity.y = CONSTANTS.SLAM_DOWN_VELOCITY;
+    this.triggerSlamTuck();
     this.impact(-0.50); // Elongate downward into spearhead pose
-    this.setFaceExpression('squint', 0.50);
+    this.setFaceExpression('strain', true, 0.50);
     return true;
+  }
+
+  // --- Air Trick Triggers ---
+  public triggerCorkscrew(dir: number = 1): void {
+    if (this.isGrounded) return;
+    this.activeTrick = 'corkscrew';
+    this.trickRollAngle = (dir >= 0 ? 1 : -1) * Math.PI * 2;
+    if (!this.trickNames.includes('CORKSCREW')) this.trickNames.push('CORKSCREW');
+  }
+
+  public triggerBackflip(): void {
+    if (this.isGrounded) return;
+    this.activeTrick = 'backflip';
+    this.trickFlipAngle = Math.PI * 2;
+    if (!this.trickNames.includes('BACKFLIP')) this.trickNames.push('BACKFLIP');
+  }
+
+  public triggerCometSpin(): void {
+    if (this.isGrounded) return;
+    this.activeTrick = 'comet';
+    this.trickSpinAngle += Math.PI * 4;
+    if (!this.trickNames.includes('COMET SPIN')) this.trickNames.push('COMET SPIN');
+  }
+
+  public triggerSlamTuck(): void {
+    this.activeTrick = 'slam';
+    this.impact(-0.35);
+  }
+
+  public triggerRailGrind(side: number = 1): void {
+    this.activeTrick = 'grind';
+    this.railGrindSide = side;
+    this.railGrindLean = side * 0.32;
+    if (!this.trickNames.includes('RAIL GRIND')) this.trickNames.push('RAIL GRIND');
+    this.setFaceExpression('smug', true, 0.40);
   }
 
   /**
@@ -626,8 +816,13 @@ export class Ball {
 
     this.isSlamming = false;
     this.isDashing = false;
+    this.activeTrick = 'none';
 
-    this.setFaceExpression(isPerfect ? 'happy' : 'squint', isPerfect ? 0.35 : 0.22);
+    this.setFaceExpression(
+      isPerfect ? 'delight' : isSlam ? 'happy' : 'normal',
+      true,
+      isPerfect ? 0.45 : 0.25
+    );
   }
 
   public triggerLaunchStretch(isSpring: boolean = false): void {
@@ -637,29 +832,40 @@ export class Ball {
     }
   }
 
-  public finalizeAirTricks(): { airTime: number; spins: number; tricks: string[] } {
+  public finalizeAirTricks(): { airTime: number; spins: number; tricks: string[]; points: number } {
     const spins = Math.floor(Math.abs(this.trickSpinAngle) / (Math.PI * 2));
     const result = {
       airTime: this.airTime,
       spins,
       tricks: [...this.trickNames],
+      points: 0,
     };
 
     if (spins >= 2) {
       result.tricks.push(`${spins * 360}° HYPER SPIN`);
+      result.points += 400 * spins;
     } else if (spins >= 1) {
       result.tricks.push('360° SPIN');
+      result.points += 250;
     }
 
     if (this.airTime >= 1.8) {
       result.tricks.push('BIG AIR');
+      result.points += 300;
     }
+
+    if (this.trickNames.includes('CORKSCREW')) result.points += 200;
+    if (this.trickNames.includes('BACKFLIP')) result.points += 250;
+    if (this.trickNames.includes('COMET SPIN')) result.points += 350;
+    if (this.trickNames.includes('RAIL GRIND')) result.points += 300;
 
     // Reset accumulator
     this.airTime = 0;
     this.trickSpinAngle = 0;
     this.trickFlipAngle = 0;
+    this.trickRollAngle = 0;
     this.trickNames = [];
+    this.activeTrick = 'none';
 
     return result;
   }
@@ -672,7 +878,8 @@ export class Ball {
     inWindow: boolean,
     cameraPos?: THREE.Vector3,
     trickLeft: boolean = false,
-    trickRight: boolean = false
+    trickRight: boolean = false,
+    lookTarget?: { x: number; y: number }
   ): void {
     // 1. Air Dash Timer & Cooldown
     if (this.dashTimer > 0) {
@@ -686,6 +893,9 @@ export class Ball {
     }
     if (this.slamCooldown > 0) {
       this.slamCooldown = Math.max(0, this.slamCooldown - delta);
+    }
+    if (this.expressionCooldown > 0) {
+      this.expressionCooldown = Math.max(0, this.expressionCooldown - delta);
     }
 
     // 2. Airtime & Trick Tracking
@@ -703,48 +913,48 @@ export class Ball {
       this.airTime = 0;
     }
 
-    // 3. Volume-Preserving Squash & Stretch Spring Physics with Dynamic Hardness & Dual Harmonic Wobble
+    // 3. Volume-Preserving Squash & Stretch Spring Physics with Dynamic Hardness & Speed Stretch
     const vy = this.velocity.y;
     const airStretch = !this.isGrounded ? THREE.MathUtils.clamp(1.0 + Math.abs(vy) * 0.0075, 1.0, 1.32) : 1.0;
 
-    // Anticipation: Pre-launch compression coil when approaching ground while holding jump/action
+    // Anticipation pre-launch coil
     let target = this.isGrounded ? 0.92 : airStretch;
     if (!this.isGrounded && timeToLand > 0 && timeToLand < 0.085 && isArmed) {
-      target = 0.88; // Coil like a compressed spring before launch
+      target = 0.86; // Coil like a compressed spring before launch
     }
 
-    // Air Dash tuck windup vs aerodynamic streak surge
+    // Speed stretch along travel (>40 u/s up to 65+ u/s)
+    const speedRatio = this.velocity.z;
+    const speedStretchFactor = THREE.MathUtils.smoothstep(speedRatio, 40, 68) * 0.08;
+    target += speedStretchFactor;
+
     if (this.isDashing && this.dashTimer > CONSTANTS.AIR_DASH_DURATION - 0.04) {
-      target = 0.84; // Spherical tuck windup
+      target = 0.84;
     } else if (this.isDashing) {
-      target = 1.45; // Aerodynamic supersonic elongation
+      target = 1.45;
     }
 
-    // Slam downward plunge profile
     if (this.isSlamming) {
       target = 1.55;
     }
 
-    // Dynamic restorative stiffness & damping
     this.stretchVel += (-(this.stretch - target) * this.springK - this.stretchVel * this.springC) * delta;
     this.stretch += this.stretchVel * delta;
     this.stretch = THREE.MathUtils.clamp(this.stretch, 0.32, 2.0);
 
-    // Spring parameter recovery to baseline
     this.springK = THREE.MathUtils.damp(this.springK, 420, 12, delta);
     this.springC = THREE.MathUtils.damp(this.springC, 22, 12, delta);
 
-    // Secondary Slower Harmonic Oscillator (Wobble)
+    // Secondary Wobble
     this.wobbleVel += (-this.wobble * 120 - this.wobbleVel * 9.5) * delta;
     this.wobble += this.wobbleVel * delta;
     this.wobble = THREE.MathUtils.clamp(this.wobble, -0.35, 0.35);
 
-    // Exact volume conservation: wide = 1 / sqrt(totalStretch)
     const totalStretch = THREE.MathUtils.clamp(this.stretch + this.wobble, 0.32, 2.2);
     const wide = 1.0 / Math.sqrt(Math.max(0.15, totalStretch));
     this.deformGroup.scale.set(wide, totalStretch, wide);
 
-    // 4. Gyro Hoop Suspension Lag, Rotation & Steering Anticipation Lean
+    // 4. Gyro Hoop & Heading Rig: Lateral Lean (22° max), Arc Pitch (12° max), Anticipation (~4°)
     this.hoopScaleY = THREE.MathUtils.damp(this.hoopScaleY, totalStretch, 22, delta);
     const hoopWide = 1.0 / Math.sqrt(Math.max(0.15, this.hoopScaleY));
     this.hoopOffsetY = THREE.MathUtils.damp(this.hoopOffsetY, (1.0 - totalStretch) * 0.28, 18, delta);
@@ -756,37 +966,66 @@ export class Ball {
     this.hoopSpinAngle -= (this.velocity.z / this.radius) * delta * (this.isDashing ? 2.5 : 0.5);
     this.precessAngle += delta * 0.7;
 
-    // Steering Anticipation: calculate rate of steering change to bank into turn before lateral speed
+    // Eased Lateral Lean (~22° / 0.384 rad max, 140ms in / 260ms out)
+    const steerTarget = -steerInput * 0.384;
     const steerRate = (steerInput - this.prevSteerInput) / Math.max(0.001, delta);
     this.prevSteerInput = steerInput;
-    const anticipatedLean = -steerInput * 0.38 - THREE.MathUtils.clamp(steerRate * 0.035, -0.22, 0.22);
-    this.leanAngle = THREE.MathUtils.damp(this.leanAngle, anticipatedLean, 18, delta);
+    const anticipate = -THREE.MathUtils.clamp(steerRate * 0.035, -0.07, 0.07);
+    const leanSpeed = Math.abs(steerInput) > Math.abs(this.leanAngle) ? 7.1 : 3.8; // 140ms in vs 260ms out
+    this.leanAngle = THREE.MathUtils.damp(this.leanAngle, steerTarget + anticipate, leanSpeed, delta);
 
-    // Gyro hoop silhouette orientation
+    // Arc Pitch (~12° / 0.21 rad based on normalized vertical speed)
+    const normVy = THREE.MathUtils.clamp(this.velocity.y / Math.max(15, this.committedLaunchVy), -1, 1);
+    const targetPitch = this.isGrounded ? 0 : normVy * 0.21;
+    this.pitchAngle = THREE.MathUtils.damp(this.pitchAngle, targetPitch, 14, delta);
+
+    // Rail grind edge lean
+    this.railGrindLean = THREE.MathUtils.damp(this.railGrindLean, 0, 4, delta);
+
+    // Landing recovery blend: When approaching touchdown (<120ms) or grounded, blend trick rotations to 0!
+    const inLandingRecovery = timeToLand > 0 && timeToLand < 0.12;
+    if (this.isGrounded || inLandingRecovery) {
+      this.trickRecoveryWeight = THREE.MathUtils.damp(this.trickRecoveryWeight, 1.0, 24, delta);
+    } else {
+      this.trickRecoveryWeight = 0.0;
+    }
+
+    // Apply active trick animations
+    if (this.activeTrick === 'corkscrew') {
+      this.trickRollAngle = THREE.MathUtils.damp(this.trickRollAngle, 0, 6, delta);
+    } else if (this.activeTrick === 'backflip') {
+      this.trickFlipAngle = THREE.MathUtils.damp(this.trickFlipAngle, 0, 8, delta);
+    }
+
+    const rec = 1.0 - this.trickRecoveryWeight;
+    const totalRoll = this.leanAngle + this.railGrindLean + this.trickRollAngle * rec;
+    const totalPitch = this.pitchAngle + this.trickFlipAngle * rec;
+
+    // Apply rotations to ball mesh and gyro hoop
+    this.mesh.rotation.x = totalPitch;
+    this.mesh.rotation.z = totalRoll;
+
     let tilt = 0.30 + Math.sin(this.precessAngle) * 0.06;
     if (this.isDashing) {
-      tilt = Math.PI * 0.5; // Rotate 90 degrees back like a supersonic thruster
+      tilt = Math.PI * 0.5;
     } else if (this.isSlamming) {
-      tilt = -0.25; // Pull upward towards crown
+      tilt = -0.25;
     }
-    this.gyroHoop.rotation.set(tilt, this.leanAngle * 0.5, this.leanAngle);
-    this.nubGroup.rotation.set(tilt, this.leanAngle * 0.5, this.leanAngle);
+    this.gyroHoop.rotation.set(tilt + totalPitch * 0.5, totalRoll * 0.5, totalRoll);
+    this.nubGroup.rotation.set(tilt + totalPitch * 0.5, totalRoll * 0.5, totalRoll);
 
     (this.nubGroup.children as THREE.Mesh[]).forEach((nub, i) => {
       const a = (i / 4) * Math.PI * 2 + this.hoopSpinAngle;
       nub.position.set(Math.cos(a) * this.radius * 1.03, Math.sin(a) * this.radius * 1.03, 0);
     });
 
-    this.mesh.rotation.z = this.leanAngle;
-
-    // 5. Face Orientation, Expression Blending & Gaze Tracking
+    // 5. Face Decal Orientation & Look-Ahead Gaze Tracking
     if (cameraPos) {
       this.faceAnchor.lookAt(cameraPos);
     } else {
       this.faceAnchor.rotation.y = Math.PI;
     }
 
-    // Natural blinking cycle
     this.blinkTimer -= delta;
     if (this.blinkTimer <= 0) {
       this.blinkTimer = 2.2 + Math.random() * 3.2;
@@ -794,7 +1033,6 @@ export class Ball {
     }
     this.blinkAmount = Math.max(0, this.blinkAmount - delta * 9);
 
-    // Simulation-driven expression timer (zero setTimeout)
     if (this.expressionTimer > 0) {
       this.expressionTimer -= delta;
       if (this.expressionTimer <= 0) {
@@ -802,11 +1040,15 @@ export class Ball {
       }
     }
 
-    // Gaze tracking: pupils lead direction of travel
+    // Gaze tracking + lookTarget offset
     let targetPupilX = THREE.MathUtils.clamp(-steerInput * 0.75 + this.velocity.x * 0.03, -1, 1);
     let targetPupilY = 0;
+    if (lookTarget) {
+      targetPupilX = THREE.MathUtils.clamp(targetPupilX + lookTarget.x * 0.8, -1, 1);
+      targetPupilY = THREE.MathUtils.clamp(targetPupilY + lookTarget.y * 0.8, -1, 1);
+    }
     if (timeToLand > 0 && timeToLand < 0.6) {
-      targetPupilY = -THREE.MathUtils.clamp((0.6 - timeToLand) / 0.6, 0, 0.85); // Glance down at touchdown
+      targetPupilY = -THREE.MathUtils.clamp((0.6 - timeToLand) / 0.6, 0, 0.85);
     }
     if (this.isDashing) {
       targetPupilX = this.dashDirection !== 0 ? this.dashDirection * 0.9 : targetPupilX;
@@ -815,31 +1057,30 @@ export class Ball {
     this.pupilX = THREE.MathUtils.damp(this.pupilX, targetPupilX, 14, delta);
     this.pupilY = THREE.MathUtils.damp(this.pupilY, targetPupilY, 14, delta);
 
-    // Auto-focus expression when approaching touchdown in timing window
+    // Expression blending
     const targetExpr = this.currentExpression !== 'normal'
       ? this.currentExpression
       : (inWindow && !this.isGrounded) ? 'focus' : 'normal';
 
-    const targetSquint = (targetExpr === 'squint' || targetExpr === 'focus') ? 1.0 : 0.0;
-    const targetHappy = targetExpr === 'happy' ? 1.0 : 0.0;
-    const targetShock = targetExpr === 'shock' ? 1.0 : 0.0;
-    const targetDizzy = targetExpr === 'dizzy' ? 1.0 : 0.0;
-    const targetCool = targetExpr === 'cool' ? 1.0 : 0.0;
-
-    this.squintWeight = THREE.MathUtils.damp(this.squintWeight, targetSquint, 16, delta);
-    this.happyWeight = THREE.MathUtils.damp(this.happyWeight, targetHappy, 16, delta);
-    this.shockWeight = THREE.MathUtils.damp(this.shockWeight, targetShock, 16, delta);
-    this.dizzyWeight = THREE.MathUtils.damp(this.dizzyWeight, targetDizzy, 16, delta);
-    this.coolWeight = THREE.MathUtils.damp(this.coolWeight, targetCool, 16, delta);
+    this.squintWeight = THREE.MathUtils.damp(this.squintWeight, (targetExpr === 'squint' || targetExpr === 'focus') ? 1.0 : 0.0, 16, delta);
+    this.happyWeight = THREE.MathUtils.damp(this.happyWeight, targetExpr === 'happy' ? 1.0 : 0.0, 16, delta);
+    this.shockWeight = THREE.MathUtils.damp(this.shockWeight, targetExpr === 'shock' ? 1.0 : 0.0, 16, delta);
+    this.dizzyWeight = THREE.MathUtils.damp(this.dizzyWeight, targetExpr === 'dizzy' ? 1.0 : 0.0, 16, delta);
+    this.coolWeight = THREE.MathUtils.damp(this.coolWeight, targetExpr === 'cool' ? 1.0 : 0.0, 16, delta);
+    this.determinedWeight = THREE.MathUtils.damp(this.determinedWeight, targetExpr === 'determined' ? 1.0 : 0.0, 16, delta);
+    this.strainWeight = THREE.MathUtils.damp(this.strainWeight, targetExpr === 'strain' ? 1.0 : 0.0, 16, delta);
+    this.delightWeight = THREE.MathUtils.damp(this.delightWeight, targetExpr === 'delight' ? 1.0 : 0.0, 16, delta);
+    this.smugWeight = THREE.MathUtils.damp(this.smugWeight, targetExpr === 'smug' ? 1.0 : 0.0, 16, delta);
+    this.panicWeight = THREE.MathUtils.damp(this.panicWeight, targetExpr === 'panic' ? 1.0 : 0.0, 16, delta);
+    this.sleepyWeight = THREE.MathUtils.damp(this.sleepyWeight, targetExpr === 'sleepy' ? 1.0 : 0.0, 16, delta);
 
     if (this.dizzyWeight > 0.05) {
       this.dizzyAngle += delta * 8.0;
     }
 
-    // Render blended procedural face
     this.renderFaceCanvas();
 
-    // 6. Update Timing Ring Visual (Converges on ball at touchdown)
+    // 6. Timing Ring
     const centre = CONSTANTS.PERFECT_WINDOW_EARLY * 0.5;
     const ringVisible = timeToLand > 0 && timeToLand < 0.95 && !this.isGrounded;
     if (ringVisible) {
@@ -851,18 +1092,18 @@ export class Ball {
       this.timingMat.uniforms.uAmount.value = THREE.MathUtils.damp(this.timingMat.uniforms.uAmount.value, 0, 16, delta);
     }
 
-    // 7. Update Speed Streaks
-    const speedRatio = Math.max(0.6, Math.min(2.4, this.velocity.z / CONSTANTS.BASE_SPEED));
+    // 7. Speed Streaks
+    const speedRatioClamped = Math.max(0.6, Math.min(2.4, this.velocity.z / CONSTANTS.BASE_SPEED));
     const dashMult = this.isDashing ? 2.2 : 1.0;
 
     this.streakMeshes.forEach((mesh, idx) => {
-      const stretchZ = speedRatio * dashMult;
+      const stretchZ = speedRatioClamped * dashMult;
       mesh.scale.set(1.0, 1.0, stretchZ);
       const mat = this.streakMaterials[idx];
       mat.uniforms.uOpacity.value = this.isDashing ? 1.0 : 0.85;
     });
 
-    // 8. Update Group Position
+    // 8. Group Position
     this.group.position.copy(this.position);
   }
 
@@ -879,7 +1120,10 @@ export class Ball {
     this.airTime = 0;
     this.trickSpinAngle = 0;
     this.trickFlipAngle = 0;
+    this.trickRollAngle = 0;
     this.trickNames = [];
+    this.activeTrick = 'none';
+    this.trickRecoveryWeight = 0;
     this.stretch = 1.0;
     this.stretchVel = 0.0;
     this.springK = 420;
@@ -892,9 +1136,13 @@ export class Ball {
     this.gyroGroup.scale.set(1, 1, 1);
     this.gyroGroup.position.set(0, 0, 0);
     this.leanAngle = 0;
+    this.pitchAngle = 0;
+    this.anticipationLean = 0;
+    this.railGrindLean = 0;
     this.prevSteerInput = 0;
     this.expressionTimer = 0;
-    this.setFaceExpression('normal');
+    this.expressionCooldown = 0;
+    this.setFaceExpression('normal', true);
     this.group.position.copy(this.position);
   }
 }

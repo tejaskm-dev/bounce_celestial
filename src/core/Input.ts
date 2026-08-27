@@ -162,7 +162,7 @@ export class InputManager {
 
   private isUiTarget(e: PointerEvent): boolean {
     return !!(e.target as HTMLElement)?.closest(
-      'button, input, select, textarea, .skin-btn, .mode-tab, .modal-backdrop, .modal-dialog, #info-modal, .info-content, .ability-slot, .page, .page-card, .board, .board-panel');
+      'button, input, select, textarea, .skin-btn, .mode-tab, .modal-backdrop, .modal-dialog, #info-modal, .info-content, .ability-slot, .page, .page-card, .board, .board-panel, .ctl');
   }
 
   private initPointerListeners(): void {
@@ -264,6 +264,32 @@ export class InputManager {
 
   /** Ability trigger: E / Q on desktop, a second thumb tap on touch. */
   public abilityTriggered: boolean = false;
+
+  /**
+   * Fire a move from the on-screen deck.
+   *
+   * On a phone every move except steering lived in an undiscoverable gesture —
+   * hold, swipe up, swipe down, two-thumb tap. The gestures still work for
+   * players who know them; this makes the same moves reachable by tapping the
+   * control that is already on screen showing their state.
+   */
+  public pressDeck(id: 'bounce' | 'dash' | 'slam' | 'ability', down: boolean): void {
+    switch (id) {
+      case 'bounce':
+        this.actionHeld = down;
+        if (down) this.actionTriggered = true;
+        break;
+      case 'dash':
+        if (down) { this.airDashTriggered = true; this.airDashDir = 0; }
+        break;
+      case 'slam':
+        if (down) this.slamTriggered = true;
+        break;
+      case 'ability':
+        if (down) this.abilityTriggered = true;
+        break;
+    }
+  }
   public consumeAbility(): boolean {
     if (this.abilityTriggered) { this.abilityTriggered = false; return true; }
     return false;

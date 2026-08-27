@@ -27,10 +27,13 @@ export const GAME_MODES: Record<GameModeId, GameModeConfig> = {
   arcade: {
     id: 'arcade',
     name: 'ARCADE RUN',
-    subtitle: 'Classic 1400m Gauntlet to the Finish Line',
+    subtitle: 'The Long Gauntlet to the Finish Line',
     icon: '',
     hasFinishLine: true,
-    finishDistance: 1400,
+    // Shortened from 19,000 alongside the new curve: the gentler opening drops
+    // the average speed, and the same distance would have run 6.1 minutes.
+    // This holds the ~5 minutes the length was chosen for.
+    finishDistance: 15300,
     speedMultiplier: 1.0,
     hazardMultiplier: 1.0,
     medals: {
@@ -111,7 +114,7 @@ export const GAME_MODES: Record<GameModeId, GameModeConfig> = {
     subtitle: 'Hyper Speed + Tight Landing Windows',
     icon: '',
     hasFinishLine: true,
-    finishDistance: 1600,
+    finishDistance: 19300,
     speedMultiplier: 1.35,
     hazardMultiplier: 1.5,
     medals: {

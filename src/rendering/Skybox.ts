@@ -8,11 +8,28 @@ import {
   flutedColumn, plainShaftColumn, columnDrum, squatPier, farColumnLOD, farDrumLOD,
   ruinedBrokenColumn, ruinedTruncatedColumn, ruinedCrackedColumn,
   bandRing, skyTower, skyTowerDomed, skyTowerTiered, skyTowerRuined, skyTowerFarLOD,
-  archedGate, romanArchGate, ruinedArchGate, balustrade, brazier,
+  archedGate, romanArchGate, ruinedArchGate, balustrade, brazier, floatingIsland,
 } from './Architecture';
 
+/**
+ * Scenery density, 0..1.
+ *
+ * A longer loop and a fourth rank took the scene from 220k to 437k triangles.
+ * That is a fair trade on a desktop GPU and a bad one on a phone, which is
+ * already rendering at a capped pixel ratio for the same reason. Rather than
+ * two scene descriptions to keep in sync, every rank reads its spacing through
+ * this: the world is the same world, just thinner.
+ */
+const SCENERY_DENSITY = (typeof window !== 'undefined'
+  && window.matchMedia?.('(pointer: coarse)').matches) ? 0.62 : 1;
+
 /** Distance over which every scenery layer recycles behind the player. */
-const LOOP_SPAN = 620;
+// The scenery recycles on this span. At 620 against a 49-second course the
+// player saw it about twice; the course is now ~19,000 units, which meant the
+// same arrangement of columns, towers and gates thirty times over. That is the
+// real shape of "not enough artifacts" — the density was fine, the *period*
+// was not. Instancing means a longer loop costs instances, not draw calls.
+const LOOP_SPAN = 1720;
 
 /**
  * Grand Expansive Open-World Stratosphere Skybox & Celestial City Scenery — "Above the Cloudline"
@@ -216,26 +233,31 @@ export class Skybox {
     // --- Colonnade Ranks (Near: 44, 74; Far: 118, 182) ---
     // Rank 0 (dist 44): ~84 cols; Rank 1 (dist 74): ~60 cols; Total near = 144
     // Rank 2 (dist 118): ~42 cols; Rank 3 (dist 182): ~30 cols; Total far = 72
-    const poolNearFluted = new InstancePool(flutedColumn(), stoneMat, 50);
-    const poolNearTuscan = new InstancePool(plainShaftColumn(), stoneMat, 40);
-    const poolNearDrum = new InstancePool(columnDrum(), stoneMat, 30);
-    const poolNearPier = new InstancePool(squatPier(), stoneMat, 25);
-    const poolNearBroken = new InstancePool(ruinedBrokenColumn(), stoneMat, 20);
-    const poolNearTrunc = new InstancePool(ruinedTruncatedColumn(), stoneMat, 15);
-    const poolNearCrack = new InstancePool(ruinedCrackedColumn(), stoneMat, 15);
+    const poolNearFluted = new InstancePool(flutedColumn(), stoneMat, 140);
+    const poolNearTuscan = new InstancePool(plainShaftColumn(), stoneMat, 112);
+    const poolNearDrum = new InstancePool(columnDrum(), stoneMat, 84);
+    const poolNearPier = new InstancePool(squatPier(), stoneMat, 70);
+    const poolNearBroken = new InstancePool(ruinedBrokenColumn(), stoneMat, 56);
+    const poolNearTrunc = new InstancePool(ruinedTruncatedColumn(), stoneMat, 42);
+    const poolNearCrack = new InstancePool(ruinedCrackedColumn(), stoneMat, 42);
 
-    const poolFarLOD = new InstancePool(farColumnLOD(), stoneFarMat, 55);
-    const poolFarDrum = new InstancePool(farDrumLOD(), stoneFarMat, 35);
-    const poolBand = new InstancePool(bandRing(), goldMat, 160);
+    const poolFarLOD = new InstancePool(farColumnLOD(), stoneFarMat, 154);
+    const poolFarDrum = new InstancePool(farDrumLOD(), stoneFarMat, 98);
+    const poolBand = new InstancePool(bandRing(), goldMat, 440);
 
     const ranks = [
-      { dist: 54, spacing: 26, hMin: 26, hMax: 58, r: 2.4, near: true, band: true },
-      { dist: 88, spacing: 40, hMin: 38, hMax: 96, r: 3.8, near: false, band: true },
-      { dist: 165, spacing: 66, hMin: 60, hMax: 145, r: 5.8, near: false, band: false },
+      { dist: 54, spacing: 22, hMin: 26, hMax: 58, r: 2.4, near: true, band: true },
+      { dist: 88, spacing: 34, hMin: 38, hMax: 96, r: 3.8, near: false, band: true },
+      { dist: 165, spacing: 56, hMin: 60, hMax: 145, r: 5.8, near: false, band: false },
+      // A fourth rank on the horizon. Cheap LOD geometry, and it is what stops
+      // the far edge of the colonnade ending in empty sky.
+      ...(SCENERY_DENSITY < 1 ? [] : [
+        { dist: 268, spacing: 88, hMin: 90, hMax: 210, r: 8.4, near: false, band: false },
+      ]),
     ];
 
     ranks.forEach((rank, ri) => {
-      const count = Math.ceil(LOOP_SPAN / rank.spacing);
+      const count = Math.ceil((LOOP_SPAN / rank.spacing) * SCENERY_DENSITY);
       for (let i = 0; i < count; i++) {
         for (const side of [-1, 1]) {
           const seed = Math.sin(i * 12.9898 + ri * 78.233 + side * 3.77) * 43758.5453;
@@ -283,14 +305,41 @@ export class Skybox {
       }
     });
 
-    // --- Towers (30 total background silhouettes) ---
-    const poolTowerSpire = new InstancePool(skyTower(), stoneFarMat, 8);
-    const poolTowerDome = new InstancePool(skyTowerDomed(), stoneFarMat, 8);
-    const poolTowerTier = new InstancePool(skyTowerTiered(), stoneFarMat, 6);
-    const poolTowerRuin = new InstancePool(skyTowerRuined(), stoneFarMat, 5);
-    const poolTowerFar = new InstancePool(skyTowerFarLOD(), stoneFarMat, 5);
+    // --- Floating islands ---
+    // `floatingIsland()` has been in Architecture.ts since the art direction
+    // changed and was never placed, so the mid-distance between the colonnade
+    // and the tower silhouettes has been empty this whole time. They drift at
+    // several depths, which also gives the parallax something to read against.
+    const islandCount = Math.round((LOOP_SPAN / 96) * SCENERY_DENSITY);
+    const poolIsland = new InstancePool(floatingIsland(), stoneFarMat, islandCount * 2 + 4);
+    for (let i = 0; i < islandCount; i++) {
+      for (const side of [-1, 1]) {
+        const seed = Math.sin(i * 21.317 + side * 9.13) * 43758.5453;
+        const rnd = seed - Math.floor(seed);
+        if (rnd < 0.34) continue;                 // gaps, so it is not a wall
+        const ii = poolIsland.claim();
+        if (ii < 0) continue;
+        const sc = 6 + rnd * 16;
+        poolIsland.set(ii,
+          side * (140 + rnd * 190),
+          -70 - rnd * 90,
+          i * (LOOP_SPAN / islandCount) + (rnd - 0.5) * 70,
+          sc, sc * (0.5 + rnd * 0.5), sc,
+          0, rnd * 6.28, 0);
+        this.tracked.push({ pool: poolIsland, i: ii });
+      }
+    }
+    this.pools.push(poolIsland);
+    this.group.add(poolIsland.mesh);
 
-    const towerCount = 16;
+    // --- Towers (background silhouettes) ---
+    const poolTowerSpire = new InstancePool(skyTower(), stoneFarMat, 22);
+    const poolTowerDome = new InstancePool(skyTowerDomed(), stoneFarMat, 22);
+    const poolTowerTier = new InstancePool(skyTowerTiered(), stoneFarMat, 17);
+    const poolTowerRuin = new InstancePool(skyTowerRuined(), stoneFarMat, 14);
+    const poolTowerFar = new InstancePool(skyTowerFarLOD(), stoneFarMat, 14);
+
+    const towerCount = Math.round((LOOP_SPAN / 20) * SCENERY_DENSITY);
     for (let i = 0; i < towerCount; i++) {
       const side = i % 2 === 0 ? 1 : -1;
       const seed = Math.sin(i * 45.164) * 43758.5453;
@@ -314,11 +363,11 @@ export class Skybox {
     }
 
     // --- Gates (11 along the causeway) ---
-    const poolGateOgee = new InstancePool(archedGate(), stoneMat, 6);
-    const poolGateRoman = new InstancePool(romanArchGate(), stoneMat, 4);
-    const poolGateRuined = new InstancePool(ruinedArchGate(), stoneMat, 3);
+    const poolGateOgee = new InstancePool(archedGate(), stoneMat, 17);
+    const poolGateRoman = new InstancePool(romanArchGate(), stoneMat, 11);
+    const poolGateRuined = new InstancePool(ruinedArchGate(), stoneMat, 9);
 
-    const gateCount = 11;
+    const gateCount = Math.round(LOOP_SPAN / 62);
     for (let i = 0; i < gateCount; i++) {
       const h = 34 + (i % 3) * 9;
       let gPool: InstancePool;

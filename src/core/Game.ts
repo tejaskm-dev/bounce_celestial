@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import { HEX } from '../rendering/Palette';
 import { RenderPipeline } from '../rendering/Renderer';
 import { Skybox } from '../rendering/Skybox';
-import { updateWorldUniforms } from '../rendering/WorldUniforms';
+import {
+  updateWorldUniforms, worldUniforms, FOG_NEAR_BASE, FOG_FAR_BASE,
+} from '../rendering/WorldUniforms';
 import { CourseGenerator } from '../world/CourseGenerator';
 import { BridgeSpine } from '../world/BridgeSpine';
 import { Ball } from '../entities/Ball';
@@ -21,9 +23,12 @@ import { TitleScreen } from '../ui/TitleScreen';
 import { GameOverScreen } from '../ui/GameOverScreen';
 import { InfoModal } from '../ui/InfoModal';
 import { CONSTANTS, arcFrom } from '../config/constants';
+import { progressOf, difficultyAt, bandAt } from '../config/Difficulty';
 import { GameModeId, GAME_MODES } from '../config/modes';
 import { AbilityState, ABILITIES, ABILITY_GLYPH } from '../game/Abilities';
 import { Menus } from '../ui/Menus';
+import { ControlDeck } from '../ui/ControlDeck';
+import { Orientation } from '../ui/Orientation';
 import { Api, RunSubmissionPayload } from '../net/Api';
 
 const enum ArmState {
@@ -56,6 +61,10 @@ export class Game {
   private input: InputManager;
   private score: ScoreManager;
   private abilities: AbilityState = new AbilityState();
+  private deck!: ControlDeck;
+  private orientation = new Orientation();
+  /** True while the load ascent is driving the camera. */
+  private introActive = true;
   private menus!: Menus;
   private state: GameStateManager;
   private sound: SoundEngine;
@@ -105,10 +114,10 @@ export class Game {
   private titleBallT: number = 0;
   private controlsHintTimer: number = 0;
   private clock: THREE.Clock = new THREE.Clock();
+  private nearMissHistory: number[] = [];
+  private idleTimer: number = 0;
+  private worldTime: number = 0;
   private touchRing: HTMLElement | null = null;
-  private abilitySlot: HTMLElement | null = null;
-  private abilityFill: HTMLElement | null = null;
-  private abilityName: HTMLElement | null = null;
   private touchNub: HTMLElement | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -160,6 +169,7 @@ export class Game {
     // 10. UI Screens & Modals
     this.hud = new HUD();
     this.titleScreen = new TitleScreen();
+    this.deck = new ControlDeck(this.input);
     this.gameOverScreen = new GameOverScreen();
     this.gameOverScreen.abilities = this.abilities;
     this.infoModal = new InfoModal();
@@ -267,6 +277,26 @@ export class Game {
     });
   }
 
+  /**
+   * Bring every recycled world pool back around a given z.
+   *
+   * The scenery, the bridge spine and the course all recycle forward: nothing
+   * ever moves backwards on its own. So any time the ball is teleported — to
+   * the title, to the start of a run — the world has to be told, or it stays
+   * parked hundreds of units down-course while the ball sits at zero. That is
+   * the "empty map" bug: road and sky dome (which follows the camera) still
+   * render, and every column, tower, gate and span is somewhere behind you.
+   *
+   * It read as intermittent because starting a run repaired it and quitting to
+   * the title reintroduced it. One helper, called from both, so the next place
+   * that moves the ball cannot forget half of it.
+   */
+  private recenterWorld(z: number): void {
+    this.course.reset();
+    this.skybox.reset(z);
+    this.bridge.reset(z);
+  }
+
   private returnToTitle(): void {
     this.gameOverScreen.hide();
     this.infoModal.hide();
@@ -278,14 +308,15 @@ export class Game {
     this.state.setState(GameStateEnum.TITLE);
     this.cameraRig.setCinematicMode(true);
     this.titleBallT = 0;
-    this.course.reset();
     this.ball.reset(0);
+    this.recenterWorld(this.ball.position.z);
     this.ball.group.rotation.set(0, 0, 0);
     this.deathSpin.set(0, 0, 0);
     this.titleScreen.show(this.score.highScore);
   }
 
   private startIntroOrCountdown(): void {
+    void this.orientation.requestLock();
     this.titleScreen.hide();
     this.gameOverScreen.hide();
     this.infoModal.hide();
@@ -332,9 +363,8 @@ export class Game {
     this.cameraRig.reset(this.ball.position);
     this.hud.reset();
     this.hud.show(true);
-    this.controlsHintTimer = 5.0;
-    const hintEl = document.getElementById('hud-controls-hint');
-    if (hintEl) hintEl.classList.remove('faded');
+    this.controlsHintTimer = 6.0;
+    this.deck.setFaded(false);
     this.music.start();
     this.ghost.startRecording();
   }
@@ -367,11 +397,7 @@ export class Game {
     this.ball.reset(0);
     this.ball.group.rotation.set(0, 0, 0);
     this.deathSpin.set(0, 0, 0);
-    this.course.reset();
-    // Bring the scenery back around the player, or a restart after a long run
-    // begins in a world with nothing in it.
-    this.skybox.reset(this.ball.position.z);
-    this.bridge.reset(this.ball.position.z);
+    this.recenterWorld(this.ball.position.z);
     this.landingReticle.reset();
     this.splashes.reset();
     this.abilities.resetRun();
@@ -427,7 +453,7 @@ export class Game {
    * touchdown keeps your speed, a scuffed one on the lip of a platform bleeds
    * it. The player then has a CHAIN_WINDOW to jump again for a momentum bonus.
    */
-  private onTouchdown(impactVy: number, surfaceY: number, big: boolean): void {
+  private onTouchdown(impactVy: number, surfaceY: number, big: boolean, isPerfect = false, isSlam = false): void {
     const nominal = arcFrom(CONSTANTS.JUMP_APEX, CONSTANTS.JUMP_AIRTIME).v0;
     const hardness = Math.min(1, Math.abs(impactVy) / Math.max(1, nominal * 1.2));
 
@@ -437,9 +463,14 @@ export class Game {
     if (isScuff) {
       this.bonusBoost = Math.max(0, this.bonusBoost - CONSTANTS.SCUFF_SPEED_PENALTY);
       this.hud.showBanner('SCUFF', 'trick');
-      this.ball.setFaceExpression('squint', 0.35);
-    } else {
+      this.particles.emitScuff(this.ball.position, Math.sign(this.ball.position.x) || 1);
+      this.ball.setFaceExpression('strain', true, 0.35);
+    } else if (!isPerfect) {
       this.score.addLanding('GOOD');
+    }
+
+    if (edge > 0.68) {
+      this.ball.triggerRailGrind(Math.sign(this.ball.position.x) || 1);
     }
 
     this.splashes.spawn(
@@ -449,15 +480,27 @@ export class Game {
     // Follow-through in the world: ground dust cloud
     this.particles.emitLandingDust(this.ball.position, hardness);
 
-    this.ball.triggerLandingSquash(false, this.ball.isSlamming, hardness);
-    this.particles.emitBounce(this.ball.position, false);
-    this.sound.playBounce(0.6 + hardness * 0.6);
+    this.ball.triggerLandingSquash(isPerfect, isSlam, hardness);
+    this.particles.emitBounce(this.ball.position, isPerfect);
+    if (isSlam) {
+      this.sound.playSlamLaunch(hardness);
+      this.particles.emitSlamImpact(this.ball.position);
+    } else if (isPerfect) {
+      this.sound.playPerfectBounce();
+    } else {
+      this.sound.playBounce(0.6 + hardness * 0.6);
+    }
     this.cameraRig.addTrauma(0.08 + hardness * 0.25);
     if (hardness > 0.6) this.cameraRig.kickFov(2.5);
 
     const trickResults = this.ball.finalizeAirTricks();
     const trickPts = this.score.addTricks(trickResults);
-    if (trickPts > 0) this.hud.showBanner(`TRICK +${trickPts}`, 'trick');
+    if (trickPts > 0) {
+      this.sound.playTrick(trickResults.tricks.join(' '), trickResults.spins);
+      this.particles.emitTrickComplete(this.ball.position, trickResults.tricks.join(' '));
+      this.hud.showBanner(`TRICK +${trickPts}`, 'trick');
+      this.ball.setFaceExpression('delight', true, 0.45);
+    }
 
     this.landingReticle.triggerTakeoff(this.ball.position.x, surfaceY, this.ball.position.z, big);
   }
@@ -480,7 +523,7 @@ export class Game {
     this.particles.emitBallDebris(this.ball.position, skinHex);
     this.cameraRig.addTrauma(0.95);
     this.hud.setDanger(true);
-    this.ball.setFaceExpression('dizzy', 2.0);
+    this.ball.setFaceExpression('dizzy', true, 2.0);
 
     // The ball deforms heavily on lethal hit and is thrown clear
     this.ball.impact(0.88);
@@ -551,6 +594,12 @@ export class Game {
 
     const raw = Math.min(this.clock.getDelta(), 0.25);
     this.input.update();
+
+    // The load ascent owns the camera and the render while it runs. Without
+    // this the loop's own camera update lands after it every frame and the
+    // climb is invisible — the ascent was being drawn and then immediately
+    // overwritten by the attract framing.
+    if (this.introActive) return;
 
     // ---- time scaling -----------------------------------------------------
     // Hit stop is a near-freeze rather than a hard skip: the old code returned
@@ -649,19 +698,18 @@ export class Game {
    * happened to consume.
    */
   /** Position the steering affordance. The only touch chrome in the game. */
-  /** Ability meter. Without a visible charge state the ability is unusable. */
-  private updateAbilityHud(): void {
-    if (!this.abilitySlot) {
-      this.abilitySlot = document.getElementById('ability-slot');
-      this.abilityFill = document.getElementById('ability-fill');
-      this.abilityName = document.getElementById('ability-name');
-    }
-    if (!this.abilitySlot || !this.abilityFill || !this.abilityName) return;
-    const a = this.abilities;
-    this.abilityFill.style.width = `${Math.round(a.fill * 100)}%`;
-    if (this.abilityName.textContent !== a.def.name) this.abilityName.textContent = a.def.name;
-    this.abilitySlot.classList.toggle('ready', a.ready && !a.isActive);
-    this.abilitySlot.classList.toggle('firing', a.isActive);
+  /** Drive the control deck from live simulation state. */
+  private updateControlDeck(): void {
+    this.deck.update({
+      inWindow: this.armState === ArmState.Armed,
+      isDashing: this.ball.isDashing,
+      dashCooldown: this.ball.dashCooldown,
+      boostFloats: this.ball.boostFloats,
+      isSlamming: this.ball.isSlamming,
+      slamCooldown: this.ball.slamCooldown,
+      steerAxis: this.input.steerAxis,
+      abilities: this.abilities,
+    });
   }
 
   private updateTouchRing(): void {
@@ -687,7 +735,7 @@ export class Game {
 
   private present(raw: number): void {
     this.updateTouchRing();
-    this.updateAbilityHud();
+    this.updateControlDeck();
     const speed01 = Math.max(0, Math.min(1,
       (this.currentSpeed - CONSTANTS.BASE_SPEED) / (CONSTANTS.MAX_SPEED - CONSTANTS.BASE_SPEED)));
     updateWorldUniforms(raw, speed01, this.currentSpeed / CONSTANTS.BASE_SPEED);
@@ -695,6 +743,68 @@ export class Game {
     this.particles.update(raw * this.timeScale);
     this.pipeline.updateLightPosition(this.ball.position);
     this.pipeline.render();
+  }
+
+  /**
+   * The load ascent.
+   *
+   * The old preloader was a gold card with a percentage on it — a website
+   * preloader, and it sat *in front of* the game rather than being any part of
+   * it. This is the engine instead: the camera starts far below the cloud sea
+   * and climbs, so the progress bar is an altimeter and the reveal is the
+   * player breaking through the cloud layer into the ruin.
+   *
+   * It costs nothing to run, because these are frames the renderer is drawing
+   * during load anyway — the world is being warmed either way, so it may as
+   * well be watched.
+   *
+   * @param t 0..1 of the climb. 1 is the title framing exactly, so the handover
+   *          to the attract camera has nothing to blend.
+   */
+  public introAscent(t: number): void {
+    const k = Math.max(0, Math.min(1, t));
+    // Ease out hard: most of the climb happens early, and the last stretch
+    // drifts, which is what makes arriving feel like arriving.
+    const e = 1 - Math.pow(1 - k, 2.4);
+
+    // Grounded in where the world actually is. The column bases sit at y=-34
+    // and the deck at y=0, so a climb that starts at -300 is 270 units below
+    // anything to look at — which is exactly what the first attempt did, and
+    // why it rendered as flat sky. Starting just under the piers means the
+    // architecture is in frame from the first second.
+    const startY = -78, endY = CONSTANTS.CAM_OFFSET_Y + 4;
+    const y = startY + (endY - startY) * e;
+
+    // A slow arc inward: wide and off-axis at the bottom, squared up on the
+    // causeway by the top, so the last frame is already the title framing.
+    const swing = (1 - e) * (1 - e);
+    const cam = this.pipeline.camera;
+    cam.position.set(
+      Math.sin(1.9 + e * 1.6) * 34 * swing,
+      y,
+      this.ball.position.z + CONSTANTS.CAM_OFFSET_Z - swing * 26,
+    );
+    // Looking up the colonnade at the start, levelling onto the road at the top.
+    cam.lookAt(0, y + 34 * swing + 2, this.ball.position.z + 34);
+    cam.updateProjectionMatrix();
+
+    // Fog closes in low and opens as the camera clears the deck, so the world
+    // resolves out of the murk rather than fading up from nothing.
+    worldUniforms.uFogRange.value.set(
+      26 + e * (FOG_NEAR_BASE - 26),
+      150 + e * (FOG_FAR_BASE - 150),
+    );
+
+    this.skybox.update(this.ball.position.z, 0);
+    this.bridge.update(this.ball.position.z);
+    this.pipeline.render();
+  }
+
+  /** Hand the camera back to the attract rig once the climb finishes. */
+  public endIntroAscent(): void {
+    this.introActive = false;
+    worldUniforms.uFogRange.value.set(FOG_NEAR_BASE, FOG_FAR_BASE);
+    this.cameraRig.reset(this.ball.position);
   }
 
   private updateTitle(delta: number): void {
@@ -808,10 +918,7 @@ export class Game {
     // 1. Controls Hint Fade Timer
     if (this.controlsHintTimer > 0) {
       this.controlsHintTimer -= delta;
-      if (this.controlsHintTimer <= 0) {
-        const hintEl = document.getElementById('hud-controls-hint');
-        if (hintEl) hintEl.classList.add('faded');
-      }
+      if (this.controlsHintTimer <= 0) this.deck.setFaded(true);
     }
 
     // Cooldowns & Timers
@@ -838,6 +945,7 @@ export class Game {
       this.cameraRig.kickFov(9);
       this.cameraRig.addTrauma(0.3);
       this.announceAbility(d.name, ABILITY_GLYPH[d.id] ?? '\u2726', d.tint);
+      this.deck.flashAbility();
       this.particles.emitBounce(this.ball.position, true);
       if (d.id === 'comet') this.ball.setFaceExpression('cool');
     }
@@ -886,9 +994,13 @@ export class Game {
     }
 
     // 6. Calibrated Speed Ramp & Pacing
-    const rawRamp = Math.min(1.0, this.score.runTime / CONSTANTS.SPEED_RAMP_SECONDS);
-    this.difficulty = Math.pow(rawRamp, 0.85);
-    this.baseSpeed = THREE.MathUtils.lerp(CONSTANTS.BASE_SPEED, CONSTANTS.MAX_SPEED, this.difficulty);
+    // Distance, not seconds. Difficulty and module selection used to ramp on
+    // different clocks — one on runTime, one on distance travelled — and since
+    // the ball covers the back of a course far faster than the front, the two
+    // drifted apart by about a third of the run.
+    const progress = progressOf(this.ball.position.z, GAME_MODES[this.currentMode].finishDistance);
+    this.difficulty = difficultyAt(progress);
+    this.baseSpeed = bandAt('speed', this.difficulty);
     this.bonusBoost = Math.max(0, this.bonusBoost - CONSTANTS.BOOST_DECAY * delta);
     this.currentSpeed = this.baseSpeed + this.bonusBoost;
     this.ball.velocity.z = this.currentSpeed;
@@ -1059,23 +1171,21 @@ export class Game {
       if (chained) {
         this.bonusBoost = Math.min(CONSTANTS.BOOST_CAP, this.bonusBoost + CONSTANTS.CHAIN_BOOST);
         this.score.addLanding('PERFECT');
-        this.sound.playPerfectBounce();
         this.cameraRig.kickFov(CONSTANTS.CAM_PERFECT_FOV_KICK + Math.min(4.5, this.score.combo * 0.25));
         this.particles.emitChainBurst(this.ball.position, this.score.combo);
         this.hud.showBanner(
           this.score.combo >= 5 ? `PERFECT BOUNCE  x${this.score.combo}` : 'PERFECT BOUNCE!', 'perfect');
         this.hud.pulseCombo();
-        this.ball.setFaceExpression('happy', 0.40);
+        this.ball.setFaceExpression('happy', true, 0.40);
       }
       if (slammed) {
-        this.sound.playPerfectBounce();
         this.cameraRig.kickFov(CONSTANTS.CAM_PERFECT_FOV_KICK * (0.8 + slamPop * 0.7));
         this.particles.emitChainBurst(this.ball.position, 3 + Math.round(slamPop * 6));
         this.hud.showBanner(slamPop > 0.6 ? 'SLAM LAUNCH!' : 'SLAM POP', 'trick');
         this.score.addTricks({ airTime: 0, spins: 0, tricks: ['SLAM POP'] });
       }
 
-      this.onTouchdown(impactVy, surfaceY, wantsBig);
+      this.onTouchdown(impactVy, surfaceY, wantsBig, chained, slammed);
     }
 
     // Rolling bleeds a little speed, so holding a line is not free and the
@@ -1211,7 +1321,8 @@ export class Game {
 
     // 10. Proximity Near Miss Check
     if (this.course.checkNearMiss(this.ball.position, CONSTANTS.NEAR_MISS_RADIUS)) {
-      this.sound.playNearMiss();
+      this.nearMissHistory.push(this.worldTime);
+      this.sound.playNearMiss(this.ball.position.x);
       this.particles.emitNearMiss(this.ball.position);
       this.cameraRig.addTrauma(0.3);
       this.score.addNearMiss();
@@ -1248,7 +1359,61 @@ export class Game {
     );
     const ghostDelta = this.ghost.updatePlayback(this.score.runTime, this.ball.position.z);
 
-    // 14. Update Entities, Camera & HUD
+    // 14. Air Tricks Triggering
+    if (!this.ball.isGrounded) {
+      if (Math.abs(this.input.steerAxis) > 0.65 && this.ball.activeTrick === 'none') {
+        this.ball.triggerCorkscrew(this.input.steerAxis > 0 ? 1 : -1);
+      } else if (this.currentSpeed > 62 && this.ball.activeTrick === 'none') {
+        this.ball.triggerCometSpin();
+      }
+    }
+
+    // 15. Personality Expression State Machine
+    this.worldTime += delta;
+    this.nearMissHistory = this.nearMissHistory.filter((t) => this.worldTime - t < 5.0);
+    if (Math.abs(this.input.steerAxis) < 0.05 && this.ball.isGrounded) {
+      this.idleTimer += delta;
+    } else {
+      this.idleTimer = 0;
+    }
+    const edge = this.edgeProximity(this.ball.position.x, this.ball.position.z);
+
+    if (this.nearMissHistory.length >= 3) {
+      this.ball.setFaceExpression('shock', false, 0.6);
+    } else if (this.ball.airTime > 1.1) {
+      this.ball.setFaceExpression('strain', false, 0.4);
+    } else if (edge > 0.82) {
+      this.ball.setFaceExpression('panic', false, 0.4);
+    } else if (this.abilities.active > 0) {
+      this.ball.setFaceExpression('cool', false, 0.5);
+    } else if (this.score.combo >= 25) {
+      this.ball.setFaceExpression('smug', false, 0.6);
+    } else if (this.score.combo >= 10) {
+      this.ball.setFaceExpression('determined', false, 0.5);
+    } else if (this.currentSpeed > 62) {
+      this.ball.setFaceExpression('focus', false, 0.4);
+    } else if (this.idleTimer > 8.0) {
+      this.ball.setFaceExpression('sleepy', false, 0.6);
+    } else {
+      this.ball.setFaceExpression('normal', false, 0.3);
+    }
+
+    // 16. Look-Ahead Hazard Gaze Tracking
+    let lookX = 0, lookY = 0;
+    let closestDist = 999;
+    const upcomingSeg = this.course.getUpcomingSegment(this.ball.position.z);
+    if (upcomingSeg) {
+      for (const obs of upcomingSeg.obstacles) {
+        const dz = obs.position.z - this.ball.position.z;
+        if (dz > 0 && dz < closestDist) {
+          closestDist = dz;
+          lookX = THREE.MathUtils.clamp((obs.position.x - this.ball.position.x) * 0.12, -0.4, 0.4);
+          lookY = THREE.MathUtils.clamp((obs.position.y - this.ball.position.y) * 0.12, -0.3, 0.3);
+        }
+      }
+    }
+
+    // 17. Update Entities, Camera & HUD
     const forwardDist = this.ball.velocity.z * delta;
     const speedKmh = this.currentSpeed * 2.3;
     this.score.addDistance(forwardDist, speedKmh);
@@ -1262,7 +1427,8 @@ export class Game {
       inTimingWindow,
       this.pipeline.camera.position,
       this.input.trickLeft,
-      this.input.trickRight
+      this.input.trickRight,
+      { x: lookX, y: lookY }
     );
 
     this.particles.emitSpeedWake(this.ball.position, this.ball.isDashing);
@@ -1281,6 +1447,8 @@ export class Game {
     const modeConfig = GAME_MODES[this.currentMode];
     const nextSeg = this.course.getUpcomingSegment(this.ball.position.z);
     this.sound.updateSpeedAmbience(this.currentSpeed / CONSTANTS.MAX_SPEED);
+    this.music.update(this.currentSpeed, this.score.combo, this.abilities.active > 0, true);
+
     this.hud.update(
       this.score,
       speedKmh,

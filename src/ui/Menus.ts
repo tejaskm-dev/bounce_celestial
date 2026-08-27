@@ -148,6 +148,16 @@ export class Menus {
   public openUsernameModal(): void {
     const modal = document.getElementById('modal-username');
     if (!modal) return;
+
+    // Never over the load screen. Auth resolves during a cold load, so this
+    // was opening while the ascent was still climbing — and its full-screen
+    // blurred backdrop washed the whole thing out. Asking someone to name
+    // themselves before the game has appeared is the wrong order anyway.
+    const preloader = document.getElementById('preloader');
+    if (preloader && !preloader.classList.contains('dismissed')) {
+      window.setTimeout(() => this.openUsernameModal(), 400);
+      return;
+    }
     const input = document.getElementById('input-username') as HTMLInputElement | null;
     if (input) {
       input.value = Api.getProfile().displayName;
@@ -644,7 +654,8 @@ export class Menus {
         : `<span class="ab-meta locked">Locked &mdash; ${(d.unlockAt - coins).toLocaleString()} coins to go</span>`;
 
       return `<div class="ab-row ${equipped ? 'equipped' : ''} ${unlocked ? '' : 'locked'}" data-ability="${id}">
-        <div class="ab-icon" style="color:#${d.tint.toString(16).padStart(6, '0')}">${ABILITY_GLYPH[id]}</div>
+        <div class="ab-icon" style="color:#${d.tint.toString(16).padStart(6, '0')}">${ABILITY_GLYPH[id]}${
+          unlocked ? '' : '<svg class="ab-lock" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-lock"/></svg>'}</div>
         <div class="ach-text">
           <div class="ab-name">${d.name}</div>
           <div class="ab-desc">${d.blurb}</div>

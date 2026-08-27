@@ -103,8 +103,19 @@ const STORE_COINS = 'bounce.coins.lifetime';
  */
 export class AbilityState {
   equipped: AbilityId = 'featherfall';
-  /** Coins banked toward the next activation. */
+  /** Coins banked toward the *next* use. Resets each time one is banked. */
   charge = 0;
+  /**
+   * Completed uses in hand.
+   *
+   * Coins used to fill one meter that stopped at full, so every coin collected
+   * past that point was wasted and there was no way to hold a use in reserve
+   * for the segment you could see coming. Banking them makes a full meter worth
+   * something, and gives the deck a number to show that a progress ring cannot:
+   * not how close the next use is, but how many you already have.
+   */
+  charges = 0;
+  readonly maxCharges = 3;
   /** Seconds left on the active effect, 0 when idle. */
   active = 0;
   /** True on the frame the ability fires, for one-shot effects. */
@@ -121,7 +132,7 @@ export class AbilityState {
   }
 
   get def(): AbilityDef { return ABILITIES[this.equipped]; }
-  get ready(): boolean { return this.charge >= this.def.charge; }
+  get ready(): boolean { return this.charges > 0; }
   get fill(): number { return Math.min(1, this.charge / this.def.charge); }
   get isActive(): boolean { return this.active > 0 || this.armed; }
 
@@ -133,6 +144,7 @@ export class AbilityState {
     if (!this.isUnlocked(id)) return false;
     this.equipped = id;
     this.charge = 0;
+    this.charges = 0;
     localStorage.setItem(STORE_EQUIPPED, id);
     return true;
   }
@@ -147,7 +159,14 @@ export class AbilityState {
    * no longer greyed out. Reporting the crossing lets the run itself tell you.
    */
   addCoin(): AbilityId | null {
-    this.charge = Math.min(this.def.charge, this.charge + 1);
+    if (this.charges < this.maxCharges) {
+      this.charge++;
+      if (this.charge >= this.def.charge) { this.charge = 0; this.charges++; }
+    } else {
+      // Every use in hand: the meter sits full rather than silently eating the
+      // coin, so the player can see that spending one is what unblocks it.
+      this.charge = this.def.charge;
+    }
     const before = this.lifetimeCoins;
     this.lifetimeCoins++;
     localStorage.setItem(STORE_COINS, String(this.lifetimeCoins));
@@ -185,7 +204,7 @@ export class AbilityState {
   /** Attempt to fire. Returns true if it actually went off. */
   trigger(): boolean {
     if (!this.ready || this.isActive) return false;
-    this.charge = 0;
+    this.charges--;
     this.justFired = true;
     if (this.def.duration > 0) this.active = this.def.duration;
     else this.armed = true;
@@ -206,6 +225,7 @@ export class AbilityState {
 
   resetRun(): void {
     this.charge = 0;
+    this.charges = 0;
     this.active = 0;
     this.armed = false;
     this.justFired = false;

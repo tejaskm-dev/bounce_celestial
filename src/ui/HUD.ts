@@ -37,9 +37,6 @@ export class HUD {
   private flashVignette: HTMLElement | null;
 
   // Persistent Controls Badges
-  private hintKeySpace: HTMLElement | null;
-  private hintKeyDash: HTMLElement | null;
-  private hintKeySlam: HTMLElement | null;
 
   // Animated rolling score & last values
   private dialArc: SVGCircleElement | null = null;
@@ -87,9 +84,6 @@ export class HUD {
     this.floaterContainer = document.getElementById('floater-container')!;
     this.ghostDeltaBadge = document.getElementById('ghost-delta-badge')!;
     this.flashVignette = document.getElementById('flash-vignette');
-    this.hintKeySpace = document.getElementById('hint-key-space');
-    this.hintKeyDash = document.getElementById('hint-key-dash');
-    this.hintKeySlam = document.getElementById('hint-key-slam');
 
     this.buildSpeedometerDial();
   }
@@ -153,12 +147,12 @@ export class HUD {
     speedKmh: number,
     boostFloats: number,
     nextSeg: CourseSegment | null,
-    dashCooldown: number,
+    _dashCooldown: number,
     _slamCooldown: number,
-    isSlamming: boolean,
+    _isSlamming: boolean,
     _perfectArmed: boolean,
     _isWhiffed: boolean,
-    inWindow: boolean,
+    _inWindow: boolean,
     ghostDelta: { deltaDist: number; deltaTime: number } | null,
     targetFinishDist: number = 1400
   ): void {
@@ -262,12 +256,7 @@ export class HUD {
       if (this.nextUpDesc.textContent !== nm) this.nextUpDesc.textContent = nm;
     }
 
-    // 8. Control hints, which double as the perfect-bounce prompt.
-    if (this.hintKeySpace) this.hintKeySpace.classList.toggle('active', inWindow);
-    if (this.hintKeyDash) {
-      this.hintKeyDash.classList.toggle('active', boostFloats > 0 && dashCooldown <= 0.05);
-    }
-    if (this.hintKeySlam) this.hintKeySlam.classList.toggle('active', isSlamming);
+    // 8. Control states now live on the deck; see ui/ControlDeck.ts.
 
     // 9. Ghost delta.
     if (this.ghostDeltaBadge) {

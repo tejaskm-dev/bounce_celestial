@@ -16,27 +16,85 @@ await page.waitForTimeout(800);
 const map = await page.evaluate(() => {
   const g = window.__BOUNCE_GAME__;
   const W = 14.5, STEP = 1;
+  // The course is now ~19,000 units. At DZ=1 the reachability DP is over 100M
+  // lane transitions; DZ=2 halves the grid in both the sweep and the hop
+  // window, which is a 4x saving for a resolution still finer than the ball.
+  const Z0 = 0, Z1 = 15400, DZ = 2;
+  const LANES = Math.round((W * 2) / 0.5) + 1;
+  const laneX = (i) => -W + i * 0.5;
+  const nz = Math.floor((Z1 - Z0) / DZ);
+
+  // --- walk the whole course ------------------------------------------------
+  // The generator only keeps a handful of segments alive around the player, so
+  // sampling once at spawn reads about 400 units and everything past that looks
+  // like a hole. This drives the course forward the way a run does — advancing
+  // the player, feeding it the speed and difficulty it would really have at
+  // that point — and samples each slice while it is still resident.
+  const floor = [];
+  for (let zi = 0; zi < nz; zi++) floor.push(new Uint8Array(LANES));
+  const sampled = new Uint8Array(nz);
+
+  // Mirrors config/Difficulty.ts. The probe has to walk the course with the
+  // same speed and difficulty a real run would have at each point, or it
+  // validates a course nobody plays.
+  const CURVE = [[0,0],[0.10,0.08],[0.25,0.26],[0.45,0.52],[0.65,0.75],[0.85,0.92],[1,1]];
+  const dAt = (p) => {
+    const q = p <= 0 ? 0 : p >= 1 ? 1 : p;
+    for (let i = 1; i < CURVE.length; i++) {
+      const [p1, d1] = CURVE[i];
+      if (q > p1) continue;
+      const [p0, d0] = CURVE[i - 1];
+      return d0 + (d1 - d0) * ((q - p0) / (p1 - p0));
+    }
+    return 1;
+  };
+  const SPEED = [28, 82];
+  let t = 0, pz = -60, lastSpeed = SPEED[0];
+  const LEAD_LO = 30, LEAD_HI = 130;       // generated, and not yet recycled
+
+  while (pz < Z1 + 40) {
+    const difficulty = dAt(pz / Z1);
+    const speed = SPEED[0] + (SPEED[1] - SPEED[0]) * difficulty;
+    lastSpeed = speed;
+    g.course.setRuntimeState(speed, difficulty);
+    g.course.update(pz, 1 / 60);
+
+    for (let z = Math.max(Z0, pz + LEAD_LO); z < Math.min(Z1, pz + LEAD_HI); z += DZ) {
+      const zi = Math.floor((z - Z0) / DZ);
+      if (zi < 0 || zi >= nz || sampled[zi]) continue;
+      sampled[zi] = 1;
+      const row = floor[zi];
+      for (let i = 0; i < LANES; i++) {
+        const x = laneX(i);
+        row[i] = (g.course.isSolidFloorAt(x, z) && !g.course.isLethalHazardAt(x, z)) ? 1 : 0;
+      }
+    }
+    pz += 24;
+    t += 24 / speed;
+  }
+
+  const unsampled = (() => { let n = 0; for (let i = 0; i < nz; i++) if (!sampled[i]) n++; return n; })();
+
   const segs = g.course.activeSegments.map(s => ({
-    type: s.moduleType, startZ: s.startZ, endZ: s.endZ, obstacles: s.obstacles.length,
+    type: s.moduleType, startZ: Math.round(s.startZ), endZ: Math.round(s.endZ),
+    obstacles: s.obstacles.length,
   }));
 
   const holes = [], sealed = [];
   let inHole = false, holeStart = 0;
-  for (let z = -20; z < 420; z += STEP) {
-    let widestFree = 0, run = 0, anySolid = false;
-    for (let x = -W; x <= W; x += 0.5) {
-      const solid = g.course.isSolidFloorAt(x, z);
-      if (solid) anySolid = true;
-      const safe = solid && !g.course.isLethalHazardAt(x, z);
-      run = safe ? run + 0.5 : 0;
-      if (run > widestFree) widestFree = run;
+  for (let zi = 0; zi < nz; zi++) {
+    const z = Z0 + zi * DZ;
+    const row = floor[zi];
+    let widest = 0, run = 0, anySafe = false;
+    for (let i = 0; i < LANES; i++) {
+      if (row[i]) { anySafe = true; run += 0.5; if (run > widest) widest = run; }
+      else run = 0;
     }
-    if (!anySolid && !inHole) { inHole = true; holeStart = z; }
-    if (anySolid && inHole) { inHole = false; holes.push([holeStart, z - STEP, z - holeStart]); }
-    // A slice with floor but no hazard-free lane wide enough for the ball.
-    if (anySolid && widestFree < 3.0) sealed.push([z, +widestFree.toFixed(1)]);
+    if (!anySafe && !inHole) { inHole = true; holeStart = z; }
+    if (anySafe && inHole) { inHole = false; holes.push([holeStart, z - STEP, z - holeStart]); }
+    if (anySafe && widest < 3.0) sealed.push([z, +widest.toFixed(1)]);
   }
-  if (inHole) holes.push([holeStart, 420, 420 - holeStart]);
+  if (inHole) holes.push([holeStart, Z1, Z1 - holeStart]);
 
   // ---- reachability DP --------------------------------------------------
   // A player does not land on a fixed stride — they choose a touchdown point
@@ -45,29 +103,12 @@ const map = await page.evaluate(() => {
   // a lane is reachable if ANY reachable lane within one hop behind it was
   // close enough to steer across in the flight time. The furthest z with a
   // reachable lane is how far the course can actually be played.
-  const speed = g.currentSpeed;
+  const speed = lastSpeed;
   // Full-commitment bounce: apex 7.2 under the shared gravity.
   const air = 2 * Math.sqrt(2 * 16.0 / 75.7);   // full-commitment bounce
   const hop = speed * air;
   const steerMax = 19 + 0.22 * speed;
   const maxShift = steerMax * air * 0.72;
-
-  const Z0 = 0, Z1 = 400, DZ = 1;
-  const LANES = Math.round((W * 2) / 0.5) + 1;
-  const laneX = (i) => -W + i * 0.5;
-  const nz = Math.floor((Z1 - Z0) / DZ);
-
-  // floor[zi] = Uint8Array of safe lanes
-  const floor = [];
-  for (let zi = 0; zi < nz; zi++) {
-    const z = Z0 + zi * DZ;
-    const row = new Uint8Array(LANES);
-    for (let i = 0; i < LANES; i++) {
-      const x = laneX(i);
-      row[i] = (g.course.isSolidFloorAt(x, z) && !g.course.isLethalHazardAt(x, z)) ? 1 : 0;
-    }
-    floor.push(row);
-  }
 
   const reach = [];
   for (let zi = 0; zi < nz; zi++) reach.push(new Uint8Array(LANES));
@@ -106,7 +147,7 @@ const map = await page.evaluate(() => {
   }
 
   return { segs, holes, sealed, maxHop: +hop.toFixed(1), maxShift: +maxShift.toFixed(1),
-           solvedTo, limit: Z1, tight };
+           solvedTo, limit: Z1, tight, unsampled };
 });
 
 console.log('SEGMENTS:');

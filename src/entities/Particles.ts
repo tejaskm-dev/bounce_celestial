@@ -171,6 +171,46 @@ export class ParticleSystem {
   }
 
   /**
+   * Scuff at platform edge: thin lateral spray of sparks and chips
+   */
+  public emitScuff(pos: THREE.Vector3, side: number = 1): void {
+    for (let i = 0; i < 8; i++) {
+      const p = this.getAvailableParticle();
+      if (!p) break;
+
+      p.position.set(pos.x + side * 0.4, pos.y + 0.05, pos.z + (Math.random() - 0.5) * 0.4);
+      p.velocity.set(side * (5 + Math.random() * 6), 2 + Math.random() * 4, -4 + Math.random() * 4);
+      p.color.set(Math.random() > 0.4 ? HEX.gilt : HEX.white);
+      p.size = 0.8 + Math.random() * 0.4;
+      p.maxLife = 0.28 + Math.random() * 0.15;
+      p.life = p.maxLife;
+      p.active = true;
+    }
+  }
+
+  /**
+   * Air Trick Complete Burst
+   */
+  public emitTrickComplete(pos: THREE.Vector3, name: string): void {
+    const count = name.includes('HYPER') || name.includes('COMET') ? 16 : 10;
+    for (let i = 0; i < count; i++) {
+      const p = this.getAvailableParticle();
+      if (!p) break;
+
+      const angle = (i / count) * Math.PI * 2;
+      const speed = 4 + Math.random() * 6;
+      p.position.copy(pos).add(new THREE.Vector3((Math.random() - 0.5) * 0.3, 0.2, (Math.random() - 0.5) * 0.3));
+      p.velocity.set(Math.cos(angle) * speed, 3 + Math.random() * 5, Math.sin(angle) * speed);
+      p.color.set(Math.random() > 0.5 ? HEX.giltBright : HEX.white);
+      p.size = 1.2 + Math.random() * 0.5;
+      p.maxLife = 0.45;
+      p.life = p.maxLife;
+      p.active = true;
+    }
+    this.spawnShockwave(pos, HEX.giltBright, 5.0);
+  }
+
+  /**
    * Escalating Chain Visual Signature based on combo count
    */
   public emitChainBurst(pos: THREE.Vector3, combo: number): void {

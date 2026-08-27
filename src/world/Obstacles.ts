@@ -36,6 +36,20 @@ export abstract class Obstacle {
   public isActive: boolean = true;
   public nearMissTriggered: boolean = false;
 
+  /**
+   * Vertical band this hazard actually threatens, for queries that ask "is x,z
+   * safe" without simulating a collision.
+   *
+   * Every hazard used to be treated as an infinitely tall column, which was
+   * harmless while they all stood on the deck. Now that some hang seventeen
+   * units up, a banner would otherwise report the floor beneath it as sealed —
+   * and the fairness probe would fail a course that plays fine.
+   *
+   * The default covers a hazard standing on the road.
+   */
+  public hazardMinY: number = -3;
+  public hazardMaxY: number = 6;
+
   public abstract update(delta: number): void;
   public abstract checkCollision(ballPos: THREE.Vector3, ballRadius: number, ballVel: THREE.Vector3): CollisionResult;
 }
@@ -626,8 +640,11 @@ export class CollapsingPlatform extends Obstacle {
 export class SpeedBoosterStrip extends Obstacle {
   private chevronGroup: THREE.Group;
 
+  public readonly length: number;
+
   constructor(x: number, y: number, z: number, length: number = 20.0) {
     super();
+    this.length = length;
     this.position.set(x, y, z);
     this.group.position.copy(this.position);
 
@@ -677,8 +694,12 @@ export class SpeedBoosterStrip extends Obstacle {
     };
 
     if (
+      // The bed is `length` units long — 60 at the one call site — but this
+      // tested a fixed 10, so two thirds of a strip the player can plainly see
+      // did nothing. The visible thing and the working thing are now the same
+      // thing.
       Math.abs(ballPos.x - this.position.x) < 2.5 &&
-      Math.abs(ballPos.z - this.position.z) < 10.0 &&
+      Math.abs(ballPos.z - this.position.z) < this.length / 2 &&
       Math.abs(ballPos.y - this.position.y) < 2.0
     ) {
       res.hit = true;
@@ -1220,7 +1241,14 @@ export class SpinningSawDisc extends Obstacle {
     const distXY = Math.hypot(ballPos.x - this.position.x, ballPos.y - sawCenterY);
     const distZ = Math.abs(ballPos.z - this.position.z);
 
-    if (distXY <= this.radius + ballRadius * 0.6 && distZ <= 1.4 + ballRadius) {
+    // The blade is extruded 0.35 deep and this tested 1.4 + the ball radius —
+    // a 5.3-unit-deep kill volume around a paper-thin disc, which is what
+    // "it got me and I wasn't near it" looks like from inside the code.
+    //
+    // 0.75 rather than 0.18 because the simulation steps at 1/120s and the ball
+    // tops out at 78 u/s: anything under a 0.33 half-depth can be tunnelled
+    // straight through. This is the tightest honest value, not the thinnest.
+    if (distXY <= this.radius + ballRadius * 0.6 && distZ <= 0.75 + ballRadius * 0.5) {
       res.hit = true;
     }
 
@@ -1234,11 +1262,13 @@ export class SpinningSawDisc extends Obstacle {
 export class SweepBarHazard extends Obstacle {
   private barGroup: THREE.Group;
   private rotSpeed: number;
+  private readonly armLength: number;
 
   constructor(x: number, y: number, z: number, armLength: number = 8.5, rotSpeed: number = 2.2) {
     super();
     this.isLethal = true;
     this.rotSpeed = rotSpeed;
+    this.armLength = armLength;
     this.position.set(x, y, z);
     this.group.position.copy(this.position);
 
@@ -1300,7 +1330,11 @@ export class SweepBarHazard extends Obstacle {
     const localX = dx * Math.cos(angle) - dz * Math.sin(angle);
     const localZ = dx * Math.sin(angle) + dz * Math.cos(angle);
 
-    if (Math.abs(localX) <= 8.5 + ballRadius && Math.abs(localZ) <= 0.6 + ballRadius) {
+    // 8.5 was hard-coded here while armLength is a constructor parameter, and
+    // every call site passes 6.0 or 6.5 — so the bar killed you two units past
+    // where it visibly ended, on both sides. An invisible wall on a hazard the
+    // player is timing by eye.
+    if (Math.abs(localX) <= this.armLength + ballRadius && Math.abs(localZ) <= 0.6 + ballRadius) {
       res.hit = true;
     }
 
@@ -1308,3 +1342,356 @@ export class SweepBarHazard extends Obstacle {
   }
 }
 
+
+/* ============================================================================
+   AERIAL HAZARDS
+   ----------------------------------------------------------------------------
+   Every hazard in this file above this line sits at deck level with a height
+   of roughly 3.5 to 4.5 units. The ball's idle bounce peaks at 8 and its
+   committed bounce at 16, so the entire hazard set could be cleared by holding
+   the action key and never touching it — the course was a floor plan being
+   flown over rather than a space being moved through.
+
+   These three occupy the flight path instead, and each one asks for a
+   different answer rather than the same jump higher:
+
+     CENSER PENDULUM  mid arc   — swings across the lane; time it or go round
+     VEIL BANNER      high      — hangs down from a beam; you must bounce LOW
+     HALO RING        threading — rim kills, centre is safe; hit one exact apex
+
+   Together they close the "hold for height and win" line: going higher now
+   walks you into the banner, and going flat walks you into the deck hazards.
+   ========================================================================= */
+
+/** Every lethal hazard reports the same shape; this saves restating it. */
+function lethalResult(): CollisionResult {
+  return {
+    hit: false, isLethal: true, isBouncePad: false, isSpring: false,
+    isBumper: false, isSpeedPad: false, isBreakable: false, isBonusGem: false,
+    bounceHeight: 0, isPerfect: false, isGood: false,
+  };
+}
+
+/**
+ * A censer swinging on a chain from a beam overhead.
+ *
+ * Occupies the middle of the arc, where the ball spends most of its airtime.
+ * The swing is a real pendulum rather than a sine on x, so it slows at the
+ * extremes and whips through the centre — the lane is briefly safe on a rhythm
+ * the player can read, which is the difference between a hazard and a tax.
+ */
+export class CenserPendulum extends Obstacle {
+  private readonly arm: THREE.Group;
+  private readonly chainLength: number;
+  private readonly swing: number;
+  private readonly rate: number;
+  private phase: number;
+  private readonly pivotY: number;
+  private readonly bowlR: number;
+  private censerX = 0;
+  private censerY = 0;
+
+  constructor(
+    x: number, y: number, z: number,
+    chainLength = 5.0, swing = 0.85, rate = 1.6, phase = 0,
+  ) {
+    super();
+    this.isLethal = true;
+    this.chainLength = chainLength;
+    this.swing = swing;
+    this.rate = rate;
+    this.phase = phase;
+    this.bowlR = 1.5;
+    // y is the height of the ball's path this is meant to intersect; the beam
+    // hangs the chain from above it so the censer arrives at that height.
+    this.pivotY = y + chainLength;
+    // The censer swings through a band around its rest height, not the chain.
+    this.hazardMinY = y - this.bowlR - 1.0;
+    this.hazardMaxY = y + this.bowlR + chainLength * (1 - Math.cos(swing)) + 1.0;
+
+    this.position.set(x, y, z);
+    this.group.position.set(x, 0, z);
+
+    const marbleMat = CelShaders.createCelMaterial({
+      color: HEX.marble, highlightColor: HEX.tilePale, rimColor: HEX.marbleDim,
+    });
+    const giltMat = CelShaders.createCelMaterial({
+      color: HEX.gilt, highlightColor: HEX.giltBright, rimColor: HEX.giltBright,
+    });
+    const lacquerMat = CelShaders.createCelMaterial({
+      color: HEX.danger, highlightColor: HEX.dangerBright,
+      rimColor: HEX.dangerBright, rimPower: 0.8, isEmissive: true,
+    });
+
+    // Beam overhead, with a boss where the chain is fixed.
+    const beamGeo = new THREE.BoxGeometry(30, 0.9, 1.5);
+    beamGeo.translate(0, this.pivotY + 1.2, 0);
+    this.group.add(new THREE.Mesh(beamGeo, marbleMat));
+    const bossGeo = new THREE.CylinderGeometry(0.55, 0.75, 1.1, 10);
+    bossGeo.translate(0, this.pivotY + 0.4, 0);
+    this.group.add(new THREE.Mesh(bossGeo, giltMat));
+
+    // The arm swings; everything below the pivot is parented to it.
+    this.arm = new THREE.Group();
+    this.arm.position.y = this.pivotY;
+    this.group.add(this.arm);
+
+    // Chain: a stack of thin links, baked into one geometry. As separate
+    // meshes this was eight draw calls per censer and there are two per
+    // segment — the links never move relative to each other, so there is no
+    // reason for them to be separate objects.
+    const links = Math.max(3, Math.round(chainLength / 0.62));
+    const linkParts: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < links; i++) {
+      const g = new THREE.TorusGeometry(0.24, 0.075, 5, 9);
+      g.rotateX(Math.PI * 0.5);
+      g.rotateY((i % 2) * Math.PI * 0.5);
+      g.translate(0, -(i + 0.5) * (chainLength / links), 0);
+      linkParts.push(g);
+    }
+    const chainGeo = mergeGeometries(linkParts, false);
+    for (const g of linkParts) g.dispose();
+    if (chainGeo) this.arm.add(new THREE.Mesh(chainGeo, giltMat));
+
+    // The censer itself: a lacquered bowl with a pierced lid and a finial.
+    const bowlPts: THREE.Vector2[] = [];
+    for (let i = 0; i <= 8; i++) {
+      const t = i / 8;
+      bowlPts.push(new THREE.Vector2(Math.sin(t * Math.PI * 0.62) * this.bowlR, -t * this.bowlR * 1.05));
+    }
+    const bowl = new THREE.Mesh(new THREE.LatheGeometry(bowlPts, 14), lacquerMat);
+    bowl.position.y = -chainLength;
+    this.arm.add(bowl);
+
+    const lidGeo = new THREE.ConeGeometry(this.bowlR * 0.98, 1.0, 14).toNonIndexed();
+    lidGeo.translate(0, -chainLength + 0.5, 0);
+    const finialGeo = new THREE.OctahedronGeometry(0.34).toNonIndexed();
+    finialGeo.translate(0, -chainLength + 1.15, 0);
+    const capGeo = mergeGeometries([lidGeo, finialGeo], false);
+    lidGeo.dispose(); finialGeo.dispose();
+    if (capGeo) this.arm.add(new THREE.Mesh(capGeo, giltMat));
+
+    this.applySwing();
+  }
+
+  private applySwing(): void {
+    const a = Math.sin(this.phase) * this.swing;
+    this.arm.rotation.z = a;
+    // Where the bowl actually is, for the collision test.
+    this.censerX = this.position.x - Math.sin(a) * this.chainLength;
+    this.censerY = this.pivotY - Math.cos(a) * this.chainLength;
+  }
+
+  public update(delta: number): void {
+    this.phase += this.rate * delta;
+    this.applySwing();
+  }
+
+  public checkCollision(ballPos: THREE.Vector3, ballRadius: number): CollisionResult {
+    const res = lethalResult();
+    const dxy = Math.hypot(ballPos.x - this.censerX, ballPos.y - this.censerY);
+    const dz = Math.abs(ballPos.z - this.position.z);
+    if (dxy <= this.bowlR + ballRadius * 0.7 && dz <= 1.5 + ballRadius) res.hit = true;
+    return res;
+  }
+}
+
+/**
+ * A crossbeam spanning the road with silk banners hanging beneath it.
+ *
+ * This is the one that answers "you can just speed-jump over everything": it
+ * occupies the *top* of the committed arc and leaves the space underneath open.
+ * The only way through is to stop holding for height — the same key that has
+ * been the correct answer to everything up to now becomes the wrong one.
+ *
+ * Banners have gaps between them, so a player who reads the lane can keep their
+ * height by moving sideways instead.
+ */
+export class VeilBanner extends Obstacle {
+  private readonly hemY: number;
+  private readonly beamY: number;
+  private readonly bands: { x: number; halfW: number; mesh: THREE.Mesh }[] = [];
+  private readonly sway: number;
+  private phase: number;
+  private giltParts: THREE.BufferGeometry[] = [];
+
+  constructor(
+    z: number,
+    hemY = 9.5,
+    beamY = 20,
+    lanes: [number, number][] = [[-9, 3.2], [0, 3.2], [9, 3.2]],
+    sway = 0.5, phase = 0,
+  ) {
+    super();
+    this.isLethal = true;
+    this.hemY = hemY;
+    this.beamY = beamY;
+    this.sway = sway;
+    this.phase = phase;
+
+    this.hazardMinY = hemY;
+    this.hazardMaxY = beamY;
+
+    this.position.set(0, hemY, z);
+    this.group.position.set(0, 0, z);
+
+    const marbleMat = CelShaders.createCelMaterial({
+      color: HEX.marble, highlightColor: HEX.tilePale, rimColor: HEX.marbleDim,
+    });
+    const giltMat = CelShaders.createCelMaterial({
+      color: HEX.gilt, highlightColor: HEX.giltBright, rimColor: HEX.giltBright,
+    });
+    const silkMat = CelShaders.createCelMaterial({
+      color: HEX.danger, highlightColor: HEX.dangerBright,
+      rimColor: HEX.dangerBright, rimPower: 0.7, isEmissive: true,
+    });
+
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(34, 1.2, 1.6), marbleMat);
+    beam.position.y = beamY;
+    this.group.add(beam);
+    const capParts: THREE.BufferGeometry[] = [];
+    for (const sx of [-16, 16]) {
+      const g = new THREE.CylinderGeometry(1.0, 1.3, 2.0, 10).toNonIndexed();
+      g.translate(sx, beamY, 0);
+      capParts.push(g);
+    }
+    this.giltParts = capParts;
+
+    const drop = beamY - hemY;
+    for (const [x, halfW] of lanes) {
+      const cloth = new THREE.Mesh(new THREE.BoxGeometry(halfW * 2, drop, 0.28), silkMat);
+      cloth.position.set(x, hemY + drop / 2, 0);
+      this.group.add(cloth);
+
+      // A weighted gilt hem, so the eye lands exactly where the danger stops.
+      const hemGeo = new THREE.BoxGeometry(halfW * 2 + 0.5, 0.55, 0.5).toNonIndexed();
+      hemGeo.translate(x, hemY, 0);
+      this.giltParts.push(hemGeo);
+
+      this.bands.push({ x, halfW, mesh: cloth });
+    }
+
+    const giltGeo = mergeGeometries(this.giltParts, false);
+    for (const g of this.giltParts) g.dispose();
+    this.giltParts = [];
+    if (giltGeo) this.group.add(new THREE.Mesh(giltGeo, giltMat));
+  }
+
+  public update(delta: number): void {
+    this.phase += this.sway * delta;
+    for (let i = 0; i < this.bands.length; i++) {
+      // A slow lean, offset per banner so the row breathes rather than marching.
+      this.bands[i].mesh.rotation.z = Math.sin(this.phase + i * 1.1) * 0.045;
+    }
+  }
+
+  public checkCollision(ballPos: THREE.Vector3, ballRadius: number): CollisionResult {
+    const res = lethalResult();
+    if (Math.abs(ballPos.z - this.position.z) > 1.1 + ballRadius) return res;
+    if (ballPos.y + ballRadius < this.hemY) return res;      // passed underneath
+    if (ballPos.y - ballRadius > this.beamY) return res;     // over the beam
+    for (const b of this.bands) {
+      if (Math.abs(ballPos.x - b.x) <= b.halfW + ballRadius * 0.7) { res.hit = true; return res; }
+    }
+    return res;
+  }
+}
+
+/**
+ * A standing ring across the road: the rim kills, the opening is safe.
+ *
+ * Where the banner says "not that high" and the deck hazards say "not that
+ * low", this one names a single height and asks the player to hit it. It is the
+ * only hazard in the game that can be passed by being *more* precise rather
+ * than by avoiding a lane, which is what makes the bounce-height control worth
+ * having.
+ */
+export class HaloRing extends Obstacle {
+  private readonly innerR: number;
+  private readonly outerR: number;
+  private readonly thickness: number;
+  private readonly centreY: number;
+  private readonly baseX: number;
+  private readonly drift: number;
+  private readonly rate: number;
+  private phase: number;
+  private readonly ring: THREE.Group;
+
+  constructor(
+    x: number, centreY: number, z: number,
+    innerR = 3.4, thickness = 0.85, drift = 0, rate = 1.1, phase = 0,
+  ) {
+    super();
+    this.isLethal = true;
+    this.innerR = innerR;
+    this.outerR = innerR + thickness * 2;
+    this.thickness = Math.max(0.9, thickness);
+    this.centreY = centreY;
+    this.baseX = x;
+    this.drift = drift;
+    this.rate = rate;
+    this.phase = phase;
+
+    this.hazardMinY = centreY - this.outerR;
+    this.hazardMaxY = centreY + this.outerR;
+
+    this.position.set(x, centreY, z);
+    this.group.position.set(x, centreY, z);
+
+    const giltMat = CelShaders.createCelMaterial({
+      color: HEX.gilt, highlightColor: HEX.giltBright, rimColor: HEX.giltBright,
+    });
+    const lacquerMat = CelShaders.createCelMaterial({
+      color: HEX.danger, highlightColor: HEX.dangerBright,
+      rimColor: HEX.dangerBright, rimPower: 0.85, isEmissive: true,
+    });
+
+    this.ring = new THREE.Group();
+    this.group.add(this.ring);
+
+    // Lacquered torus with a gilt inner lip, so the safe opening is the part
+    // that reads as gold and the lethal band is the part that reads as red.
+    const torus = new THREE.Mesh(
+      new THREE.TorusGeometry(innerR + thickness, thickness, 10, 28), lacquerMat);
+    this.ring.add(torus);
+
+    // Eight radial studs, which give the spin something to read against. Baked
+    // into the lip's geometry: they rotate with the ring, never against it.
+    const studParts: THREE.BufferGeometry[] = [
+      new THREE.TorusGeometry(innerR, 0.16, 6, 30).toNonIndexed(),
+    ];
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const g = new THREE.OctahedronGeometry(0.42).toNonIndexed();
+      g.translate(Math.cos(a) * (innerR + thickness * 2), Math.sin(a) * (innerR + thickness * 2), 0);
+      studParts.push(g);
+    }
+    const giltGeo = mergeGeometries(studParts, false);
+    for (const g of studParts) g.dispose();
+    if (giltGeo) this.ring.add(new THREE.Mesh(giltGeo, giltMat));
+  }
+
+  public update(delta: number): void {
+    this.phase += this.rate * delta;
+    this.ring.rotation.z += 0.55 * delta;
+    if (this.drift !== 0) {
+      const x = this.baseX + Math.sin(this.phase) * this.drift;
+      this.position.x = x;
+      this.group.position.x = x;
+    }
+  }
+
+  public checkCollision(ballPos: THREE.Vector3, ballRadius: number): CollisionResult {
+    const res = lethalResult();
+    // Scaled off outerR, so a wider ring got a deeper kill volume even though
+    // the band itself never changes thickness. On the one hazard in the game
+    // that asks for precision, being killed two units after visibly passing
+    // through reads as the ring cheating.
+    if (Math.abs(ballPos.z - this.position.z) > this.thickness + ballRadius * 0.6) return res;
+    const d = Math.hypot(ballPos.x - this.position.x, ballPos.y - this.centreY);
+    // Lethal only in the band itself. Inside the opening, and outside the whole
+    // ring, are both safe — the second is what stops it being an invisible wall.
+    if (d >= this.innerR - ballRadius * 0.5 && d <= this.outerR + ballRadius * 0.5) res.hit = true;
+    return res;
+  }
+}

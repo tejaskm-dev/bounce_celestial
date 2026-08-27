@@ -37,8 +37,8 @@ export class RenderPipeline {
       stencil: false,
     });
 
+    this.renderer.setPixelRatio(RenderPipeline.pixelRatio());
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     // Tone mapping off: ACES desaturates saturated neon badly, and this art
     // direction wants emissives to clip to white rather than roll off. The
     // materials still carry <tonemapping_fragment>, so flipping this back on
@@ -79,8 +79,21 @@ export class RenderPipeline {
     this.ambientLight = new THREE.AmbientLight(HEX.skyHigh, 1.15);
     this.scene.add(this.ambientLight);
 
-    // Handle Window Resizing
-    window.addEventListener('resize', this.onResize.bind(this));
+    // Handle Window Resizing.
+    //
+    // `resize` alone is not enough on a phone: iOS fires it mid-rotation with
+    // the pre-rotation dimensions, so the canvas ends up sized to the old
+    // orientation until something else nudges it. orientationchange plus the
+    // visual viewport cover the cases `resize` reports late or not at all.
+    const onResize = this.onResize.bind(this);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', () => {
+      onResize();
+      // And again after the rotation animation settles, because the first call
+      // is the one that reads stale numbers.
+      window.setTimeout(onResize, 260);
+    });
+    window.visualViewport?.addEventListener('resize', onResize);
   }
 
   private onResize(): void {
@@ -88,8 +101,23 @@ export class RenderPipeline {
     const height = window.innerHeight;
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    // Ratio before size: setSize computes the drawing buffer from the *current*
+    // pixel ratio, so setting the ratio afterwards leaves the buffer sized for
+    // the previous one until the next resize happens to come along.
+    this.renderer.setPixelRatio(RenderPipeline.pixelRatio());
     this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  }
+
+  /**
+   * Phones have the highest pixel ratios and the least GPU to spend on them.
+   * A DPR-3 handset rendering at 2x is pushing 4x the fragments of 1x for a
+   * difference nobody can see at arm's length on a scene this stylised, so
+   * touch devices cap lower. Desktop keeps 2x for retina crispness.
+   */
+  private static pixelRatio(): number {
+    const dpr = window.devicePixelRatio || 1;
+    const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+    return Math.min(dpr, coarse ? 1.5 : 2);
   }
 
   public updateLightPosition(targetPos: THREE.Vector3): void {
