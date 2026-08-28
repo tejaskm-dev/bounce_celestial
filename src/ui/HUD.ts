@@ -162,17 +162,17 @@ export class HUD {
     if (combo !== this.last.combo) {
       this.last.combo = combo;
       this.comboVal.innerHTML = `<span class="x">x</span>${combo}`;
-      const tier = combo >= 40 ? 'TRANSCENDENT'
-        : combo >= 25 ? 'RADIANT'
-        : combo >= 15 ? 'SOARING'
-        : combo >= 8 ? 'RISING'
-        : combo >= 3 ? 'STEADY' : 'STEADY';
+      const tier = combo >= 15 ? 'TRANSCENDENT'
+        : combo >= 10 ? 'RADIANT'
+        : combo >= 6 ? 'SOARING'
+        : combo >= 3 ? 'RISING'
+        : 'STEADY';
       if (this.comboSubtext.textContent !== tier) this.comboSubtext.textContent = tier;
     }
     // The bar is the combo's clock: it is the only thing telling the player
     // their multiplier is draining.
     if (this.comboBarFill) {
-      const frac = Math.max(0, Math.min(1, scoreManager.comboTimer / 3.4));
+      const frac = Math.max(0, Math.min(1, scoreManager.comboTimer / 3.2));
       this.comboBarFill.style.width = `${(frac * 100).toFixed(1)}%`;
     }
 

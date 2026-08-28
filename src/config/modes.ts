@@ -27,20 +27,17 @@ export const GAME_MODES: Record<GameModeId, GameModeConfig> = {
   arcade: {
     id: 'arcade',
     name: 'ARCADE RUN',
-    subtitle: 'The Long Gauntlet to the Finish Line',
+    subtitle: 'The 1,400m Gauntlet to the Finish Line',
     icon: '',
     hasFinishLine: true,
-    // Shortened from 19,000 alongside the new curve: the gentler opening drops
-    // the average speed, and the same distance would have run 6.1 minutes.
-    // This holds the ~5 minutes the length was chosen for.
-    finishDistance: 15300,
+    finishDistance: 1400,
     speedMultiplier: 1.0,
     hazardMultiplier: 1.0,
     medals: {
-      bronze: 25000,
-      silver: 60000,
-      gold: 120000,
-      master: 200000,
+      bronze: 800,
+      silver: 1800,
+      gold: 2800,
+      master: 3800,
     },
   },
   time_attack: {
@@ -49,7 +46,7 @@ export const GAME_MODES: Record<GameModeId, GameModeConfig> = {
     subtitle: 'Race Against the Clock & Your Ghost',
     icon: '',
     hasFinishLine: true,
-    finishDistance: 1400,
+    finishDistance: 1000,
     speedMultiplier: 1.15,
     hazardMultiplier: 1.0,
     medals: {
@@ -70,10 +67,10 @@ export const GAME_MODES: Record<GameModeId, GameModeConfig> = {
     speedMultiplier: 1.1,
     hazardMultiplier: 1.2,
     medals: {
-      bronze: 50000,
-      silver: 150000,
-      gold: 300000,
-      master: 550000,
+      bronze: 600,
+      silver: 1400,
+      gold: 2400,
+      master: 3500,
     },
   },
   endless: {
@@ -86,10 +83,10 @@ export const GAME_MODES: Record<GameModeId, GameModeConfig> = {
     speedMultiplier: 1.0,
     hazardMultiplier: 1.0,
     medals: {
-      bronze: 1000,  // Distance in meters
-      silver: 2500,
-      gold: 5000,
-      master: 10000,
+      bronze: 500,  // Distance in meters
+      silver: 1200,
+      gold: 2500,
+      master: 4000,
     },
   },
   daily: {
@@ -102,26 +99,26 @@ export const GAME_MODES: Record<GameModeId, GameModeConfig> = {
     speedMultiplier: 1.05,
     hazardMultiplier: 1.1,
     medals: {
-      bronze: 1200,
-      silver: 3000,
-      gold: 6000,
-      master: 12000,
+      bronze: 600,
+      silver: 1400,
+      gold: 2800,
+      master: 4500,
     },
   },
   master: {
     id: 'master',
     name: 'MASTER GAUNTLET',
-    subtitle: 'Hyper Speed + Tight Landing Windows',
+    subtitle: 'Extreme Speed, Thin Timing, Hardcore Hazards',
     icon: '',
     hasFinishLine: true,
-    finishDistance: 19300,
+    finishDistance: 1400,
     speedMultiplier: 1.35,
     hazardMultiplier: 1.5,
     medals: {
-      bronze: 80000,
-      silver: 180000,
-      gold: 350000,
-      master: 600000,
+      bronze: 1000,
+      silver: 2200,
+      gold: 3400,
+      master: 4500,
     },
   },
 };

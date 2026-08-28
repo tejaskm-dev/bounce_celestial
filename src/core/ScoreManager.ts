@@ -56,6 +56,21 @@ export class ScoreManager {
   }
 
   private loadHighScore(): void {
+    // Migration: reset legacy inflated scores (> 5000) so new calibrated scores update properly
+    const version = localStorage.getItem('bounce_score_version');
+    if (version !== 'v2') {
+      const modes: GameModeId[] = ['arcade', 'time_attack', 'score_attack', 'endless', 'daily', 'master'];
+      modes.forEach(m => {
+        const s = Number(localStorage.getItem(`bounce_high_score_${m}`) ?? 0) || 0;
+        if (s > 5000) {
+          localStorage.removeItem(`bounce_high_score_${m}`);
+        }
+      });
+      const glob = Number(localStorage.getItem('bounce.stat.bestScore') ?? 0) || 0;
+      if (glob > 5000) localStorage.removeItem('bounce.stat.bestScore');
+      localStorage.setItem('bounce_score_version', 'v2');
+    }
+
     const saved = localStorage.getItem(`bounce_high_score_${this.currentMode}`);
     if (saved) {
       this.highScore = parseInt(saved, 10) || 0;
@@ -81,8 +96,7 @@ export class ScoreManager {
       this.topSpeedKmh = currentSpeedKmh;
     }
 
-    // Distance is flat and unmultiplied: it is the floor of the run, not the
-    // payout. Multiplying it was what made the score run away from the player.
+    // Distance is flat and unmultiplied: provides steady baseline floor.
     this.score += Math.floor(deltaDist * CONSTANTS.SCORE_PER_METRE);
 
     if (this.score > this.highScore) {
@@ -98,20 +112,18 @@ export class ScoreManager {
     switch (quality) {
       case 'PERFECT':
         this.perfectLandings++;
-        this.incrementCombo(2);
+        this.incrementCombo(1);
         this.score += Math.round(CONSTANTS.PERFECT_SCORE * this.multiplier);
         this.comboTimer = CONSTANTS.COMBO_DECAY_TIME;
         break;
       case 'GOOD':
         this.goodLandings++;
-        this.incrementCombo(1);
         this.score += Math.round(CONSTANTS.GOOD_SCORE * this.multiplier);
         this.comboTimer = CONSTANTS.COMBO_DECAY_TIME;
         break;
       case 'POOR':
         this.poorLandings++;
-        // Minor penalty to combo timer
-        this.comboTimer = Math.min(this.comboTimer, 1.5);
+        this.comboTimer = Math.min(this.comboTimer, 1.2);
         this.score += CONSTANTS.SCUFF_SCORE;
         break;
       case 'MISS':
@@ -130,14 +142,14 @@ export class ScoreManager {
     }
 
     trickScore += trickData.spins * CONSTANTS.SPIN_TRICK_SCORE;
-    trickScore += Math.floor(trickData.airTime * 80);
+    trickScore += Math.floor(trickData.airTime * 12);
 
-    if (trickData.tricks.includes('AIR DASH')) trickScore += 120;
-    if (trickData.tricks.includes('BIG AIR')) trickScore += 250;
-    if (trickData.tricks.includes('CORKSCREW')) trickScore += 160;
-    if (trickData.tricks.includes('BACKFLIP')) trickScore += 200;
-    if (trickData.tricks.includes('COMET SPIN')) trickScore += 260;
-    if (trickData.tricks.includes('RAIL GRIND')) trickScore += 220;
+    if (trickData.tricks.includes('AIR DASH')) trickScore += 10;
+    if (trickData.tricks.includes('BIG AIR')) trickScore += 15;
+    if (trickData.tricks.includes('CORKSCREW')) trickScore += 12;
+    if (trickData.tricks.includes('BACKFLIP')) trickScore += 15;
+    if (trickData.tricks.includes('COMET SPIN')) trickScore += 20;
+    if (trickData.tricks.includes('RAIL GRIND')) trickScore += 15;
 
     const totalAward = Math.round(trickScore * this.multiplier);
     this.score += totalAward;
@@ -157,33 +169,31 @@ export class ScoreManager {
 
   public addSpeedBreak(): void {
     this.speedBreaks++;
-    this.incrementCombo(2);
+    this.incrementCombo(1);
     this.score += Math.round(CONSTANTS.SPEED_BREAK_SCORE * this.multiplier);
     this.comboTimer = CONSTANTS.COMBO_DECAY_TIME;
   }
 
   public addBonusGem(): void {
-    this.score += Math.round(CONSTANTS.COIN_SCORE * this.multiplier);
+    this.score += CONSTANTS.COIN_SCORE;
     this.coins++;
-    this.incrementCombo(1);
-    this.comboTimer = CONSTANTS.COMBO_DECAY_TIME;
+    this.comboTimer = Math.max(this.comboTimer, 1.8);
   }
 
   public addBumperHit(): void {
-    this.score += Math.round(150 * this.multiplier);
+    this.score += Math.round(15 * this.multiplier);
     this.incrementCombo(1);
     this.comboTimer = CONSTANTS.COMBO_DECAY_TIME;
   }
 
   public addSpringLaunch(): void {
-    this.score += Math.round(250 * this.multiplier);
+    this.score += Math.round(20 * this.multiplier);
     this.incrementCombo(1);
     this.comboTimer = CONSTANTS.COMBO_DECAY_TIME;
   }
 
   private incrementCombo(amount: number = 1): void {
     const prev = this.combo;
-    // The counter is bounded by its own cap, not by the multiplier's.
     this.combo = Math.min(CONSTANTS.COMBO_COUNT_MAX, this.combo + amount);
     if (this.combo > this.maxCombo) {
       this.maxCombo = this.combo;

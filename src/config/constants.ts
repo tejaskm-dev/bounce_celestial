@@ -146,33 +146,24 @@ export const CONSTANTS = {
   MAX_STEER_TILT: 0.42,         // Visual lean angle (radians)
 
   // --- Scoring -------------------------------------------------------------
-  // Rebalanced so the number stays legible. Previously *everything* was
-  // multiplied by a combo that reached 50, so a single perfect was worth
-  // 50,000 against ~85 for a metre — the score raced away from the player and
-  // stopped telling them which of their actions had earned anything.
-  //
-  // Now: distance is the flat baseline and is never multiplied. Skill actions
-  // are worth a readable amount and only *those* take the multiplier, which is
-  // capped much lower. A good run reads in the thousands, not the millions.
-  SCORE_PER_METRE: 1,           // Flat. Surviving is the floor, not the payout.
-  PERFECT_SCORE: 120,           // The core skill action
-  GOOD_SCORE: 25,               // An ordinary clean landing
-  SCUFF_SCORE: 5,               // Still something, so a bad landing is not a void
-  COIN_SCORE: 60,               // Coins are the reason to leave the centre line
-  SPIN_TRICK_SCORE: 90,
-  NEAR_MISS_SCORE: 70,
-  SPEED_BREAK_SCORE: 200,
-  BOLT_SCORE: 60,
-  // Two separate caps, which were previously conflated into one.
-  //
-  // COMBO_COUNT_MAX bounds the *counter* — the x24 the player sees and chases.
-  // COMBO_MAX_MULTIPLIER bounds the *payout* derived from it. Clamping the
-  // counter with the multiplier cap froze the combo at x8 no matter how well
-  // the player was doing, which is why it looked like it had stopped counting.
-  COMBO_COUNT_MAX: 99,
-  COMBO_STEP: 0.25,
-  COMBO_MAX_MULTIPLIER: 8,
-  COMBO_DECAY_TIME: 3.4,
+  // Balanced so the numbers are clear, readable, and grounded in arcade discipline.
+  // Distance provides the steady baseline; skill actions (perfect bounces,
+  // tricks, near misses) provide clean increments scaled by a sensible combo multiplier.
+  SCORE_PER_METRE: 1,           // Flat distance floor (1 pt per meter)
+  PERFECT_SCORE: 15,            // Core skill action (clean 15 pts)
+  GOOD_SCORE: 5,                // Standard clean landing (5 pts)
+  SCUFF_SCORE: 1,               // Edge clip (1 pt, unmultiplied)
+  COIN_SCORE: 5,                // Line reward (5 pts)
+  SPIN_TRICK_SCORE: 10,         // Clean spin trick bonus
+  NEAR_MISS_SCORE: 10,          // Precision hazard graze
+  SPEED_BREAK_SCORE: 20,        // High-velocity barrier smash
+  BOLT_SCORE: 5,
+  
+  // Combo mechanics: Max readable counter x20, gentle multiplier step (0.1/step, max 3.0x)
+  COMBO_COUNT_MAX: 20,
+  COMBO_STEP: 0.10,
+  COMBO_MAX_MULTIPLIER: 3.0,
+  COMBO_DECAY_TIME: 3.2,
 
   // Bounce velocity & obstacle aliases
   BOUNCE_VELOCITY: 32,

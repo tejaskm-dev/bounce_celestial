@@ -2,13 +2,13 @@ import { GameModeId, GAME_MODES } from '../config/modes';
 
 export const SKIN_UNLOCK_SCORES: Record<string, number> = {
   cyan: 0,
-  magenta: 10000,
-  gold: 25000,
-  violet: 50000,
-  mint: 100000,
-  ghost: 250000,
-  inferno: 500000,
-  obsidian: 1000000,
+  magenta: 600,
+  gold: 1400,
+  violet: 2200,
+  mint: 2800,
+  ghost: 3400,
+  inferno: 4000,
+  obsidian: 4600,
 };
 
 /**

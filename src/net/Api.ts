@@ -61,7 +61,7 @@ export interface LeaderboardEntry {
 export type LeaderboardWindow = 'all' | 'week' | 'today';
 export type LeaderboardScope = 'global' | 'friends' | 'me';
 
-const CACHE_TTL_MS = 60 * 1000; // 60s client cache
+const CACHE_TTL_MS = 2 * 1000; // 2s client cache so leaderboards update instantly
 
 // Local storage keys
 const KEY_COINS = 'bounce.coins.lifetime';
@@ -520,6 +520,19 @@ export class NetworkApi {
     localStorage.setItem(KEY_BEST_DIST, String(newBestDist));
     localStorage.setItem(KEY_BEST_COMBO, String(newBestCombo));
 
+    // Migration: ensure legacy inflated scores (> 5000) are wiped so new runs register
+    const version = localStorage.getItem('bounce_score_version');
+    if (version !== 'v2') {
+      const modes: GameModeId[] = ['arcade', 'time_attack', 'score_attack', 'endless', 'daily', 'master'];
+      modes.forEach(m => {
+        const s = Number(localStorage.getItem(`bounce_high_score_${m}`) ?? 0) || 0;
+        if (s > 5000) localStorage.removeItem(`bounce_high_score_${m}`);
+      });
+      const glob = Number(localStorage.getItem('bounce.stat.bestScore') ?? 0) || 0;
+      if (glob > 5000) localStorage.removeItem('bounce.stat.bestScore');
+      localStorage.setItem('bounce_score_version', 'v2');
+    }
+
     // Save guaranteed highest score for the specific mode
     const curHighScore = Number(localStorage.getItem(`bounce_high_score_${payload.mode}`) ?? 0) || 0;
     const bestModeScore = Math.max(curHighScore, payload.score);
@@ -704,26 +717,35 @@ export class NetworkApi {
         });
 
         if (data && !error) {
-          let entries: LeaderboardEntry[] = data.map((row: any) => ({
-            userId: row.user_id,
-            displayName: row.display_name,
-            score: Number(row.score) || 0,
-            distance: Number(row.distance) || 0,
-            runTime: Number(row.run_time) || 0,
-            createdAt: row.created_at,
-            rank: Number(row.rank),
-            isYou: Boolean(row.is_you),
-          }));
+          const profile = this.getProfile();
+          let entries: LeaderboardEntry[] = data.map((row: any) => {
+            let score = Number(row.score) || 0;
+            // Normalize legacy inflated scores (> 5000) from earlier version
+            if (score > 5000) {
+              score = Math.round(score * 0.08);
+            }
+            const isYou = Boolean(row.is_you) || (profile.displayName && row.display_name === profile.displayName);
+            return {
+              userId: row.user_id,
+              displayName: row.display_name,
+              score,
+              distance: Number(row.distance) || 0,
+              runTime: Number(row.run_time) || 0,
+              createdAt: row.created_at,
+              rank: Number(row.rank),
+              isYou,
+            };
+          });
 
           const localScore = Number(localStorage.getItem(`bounce_high_score_${mode}`) ?? 0) || 0;
           const localTime = Number(localStorage.getItem(`bounce_best_time_${mode}`) ?? 0) || 0;
 
           let you = entries.find((e) => e.isYou);
           if (you) {
-            if (localScore > you.score) you.score = localScore;
+            you.isYou = true;
+            if (localScore > 0) you.score = localScore;
             if (localTime > 0 && (you.runTime === 0 || localTime < you.runTime)) you.runTime = localTime;
           } else if (localScore > 0 || localTime > 0) {
-            const profile = this.getProfile();
             entries.push({
               userId: profile.id,
               displayName: profile.displayName,
@@ -773,50 +795,50 @@ export class NetworkApi {
   ): LeaderboardEntry[] {
     const defaultRivalsByMode: Record<GameModeId, Array<{ name: string; t: number; s: number; d: number }>> = {
       arcade: [
-        { name: 'Kaira', t: 54.384, s: 24500, d: 2400 },
-        { name: 'Nox', t: 56.633, s: 21800, d: 2150 },
-        { name: 'Pip', t: 57.467, s: 18900, d: 1980 },
-        { name: 'Luna', t: 58.920, s: 16400, d: 1820 },
-        { name: 'Zephyr', t: 59.301, s: 14200, d: 1740 },
-        { name: 'Aurora', t: 60.112, s: 12500, d: 1600 },
-        { name: 'Rift', t: 60.778, s: 10800, d: 1480 },
-        { name: 'Solace', t: 61.335, s: 9100, d: 1390 },
-        { name: 'Vex', t: 61.889, s: 7600, d: 1280 },
-        { name: 'Wren', t: 62.740, s: 6200, d: 1150 },
-        { name: 'Halcyon', t: 63.508, s: 5100, d: 1040 },
-        { name: 'Ember', t: 64.221, s: 4200, d: 920 },
+        { name: 'Kaira', t: 54.384, s: 3450, d: 1400 },
+        { name: 'Nox', t: 56.633, s: 2980, d: 1350 },
+        { name: 'Pip', t: 57.467, s: 2620, d: 1280 },
+        { name: 'Luna', t: 58.920, s: 2280, d: 1210 },
+        { name: 'Zephyr', t: 59.301, s: 1950, d: 1140 },
+        { name: 'Aurora', t: 60.112, s: 1680, d: 1060 },
+        { name: 'Rift', t: 60.778, s: 1420, d: 980 },
+        { name: 'Solace', t: 61.335, s: 1190, d: 890 },
+        { name: 'Vex', t: 61.889, s: 980, d: 780 },
+        { name: 'Wren', t: 62.740, s: 780, d: 680 },
+        { name: 'Halcyon', t: 63.508, s: 590, d: 550 },
+        { name: 'Ember', t: 64.221, s: 420, d: 420 },
       ],
       time_attack: [
-        { name: 'Kaira', t: 26.412, s: 18200, d: 1400 },
-        { name: 'Zephyr', t: 28.190, s: 16100, d: 1400 },
-        { name: 'Nox', t: 30.245, s: 14500, d: 1400 },
-        { name: 'Pip', t: 32.890, s: 12800, d: 1400 },
-        { name: 'Luna', t: 35.112, s: 11200, d: 1400 },
-        { name: 'Aurora', t: 37.450, s: 9800, d: 1400 },
-        { name: 'Solace', t: 41.200, s: 8400, d: 1400 },
+        { name: 'Kaira', t: 26.412, s: 2800, d: 1000 },
+        { name: 'Zephyr', t: 28.190, s: 2450, d: 1000 },
+        { name: 'Nox', t: 30.245, s: 2100, d: 1000 },
+        { name: 'Pip', t: 32.890, s: 1780, d: 1000 },
+        { name: 'Luna', t: 35.112, s: 1450, d: 1000 },
+        { name: 'Aurora', t: 37.450, s: 1200, d: 1000 },
+        { name: 'Solace', t: 41.200, s: 950, d: 1000 },
       ],
       score_attack: [
-        { name: 'Pip', t: 60.0, s: 38500, d: 1800 },
-        { name: 'Kaira', t: 60.0, s: 31200, d: 1650 },
-        { name: 'Zephyr', t: 60.0, s: 26400, d: 1520 },
-        { name: 'Nox', t: 60.0, s: 21900, d: 1380 },
-        { name: 'Luna', t: 60.0, s: 17500, d: 1200 },
+        { name: 'Pip', t: 60.0, s: 3200, d: 1400 },
+        { name: 'Kaira', t: 60.0, s: 2750, d: 1320 },
+        { name: 'Zephyr', t: 60.0, s: 2320, d: 1240 },
+        { name: 'Nox', t: 60.0, s: 1910, d: 1150 },
+        { name: 'Luna', t: 60.0, s: 1480, d: 1020 },
       ],
       endless: [
-        { name: 'Zephyr', t: 142.0, s: 28400, d: 5200 },
-        { name: 'Kaira', t: 120.5, s: 23100, d: 4100 },
-        { name: 'Nox', t: 98.4, s: 18600, d: 3200 },
-        { name: 'Aurora', t: 75.0, s: 13900, d: 2400 },
+        { name: 'Zephyr', t: 142.0, s: 3800, d: 3200 },
+        { name: 'Kaira', t: 120.5, s: 3100, d: 2600 },
+        { name: 'Nox', t: 98.4, s: 2450, d: 2050 },
+        { name: 'Aurora', t: 75.0, s: 1750, d: 1480 },
       ],
       daily: [
-        { name: 'Luna', t: 88.0, s: 22400, d: 3600 },
-        { name: 'Pip', t: 72.0, s: 17800, d: 2800 },
-        { name: 'Vex', t: 55.0, s: 12500, d: 1900 },
+        { name: 'Luna', t: 88.0, s: 3100, d: 2400 },
+        { name: 'Pip', t: 72.0, s: 2450, d: 1950 },
+        { name: 'Vex', t: 55.0, s: 1680, d: 1350 },
       ],
       master: [
-        { name: 'Kaira', t: 48.0, s: 32000, d: 2800 },
-        { name: 'Nox', t: 42.0, s: 26500, d: 2300 },
-        { name: 'Zephyr', t: 36.0, s: 21000, d: 1800 },
+        { name: 'Kaira', t: 48.0, s: 4200, d: 1800 },
+        { name: 'Nox', t: 42.0, s: 3450, d: 1550 },
+        { name: 'Zephyr', t: 36.0, s: 2700, d: 1280 },
       ],
     };
 

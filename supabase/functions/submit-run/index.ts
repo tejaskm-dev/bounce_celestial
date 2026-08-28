@@ -5,7 +5,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.1';
 
 const MAX_SPEED = 78;
 const MAX_SPEED_CEILING = MAX_SPEED * 1.05; // 81.9 u/s
-const COMBO_COUNT_MAX = 99;
+const COMBO_COUNT_MAX = 20;
 const MIN_AIRTIME = 0.4; // minimum plausible seconds per perfect bounce
 const VALID_MODES = ['arcade', 'time_attack', 'score_attack', 'endless', 'daily', 'master'];
 

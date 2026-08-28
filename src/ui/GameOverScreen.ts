@@ -11,11 +11,11 @@ import { AbilityState, ABILITIES } from '../game/Abilities';
  * through to gilt as the run gets better.
  */
 function getRankForScore(score: number): { letter: string; color: string; label: string } {
-  if (score >= 45000) return { letter: 'S', color: '#C8A868', label: 'ASCENDANT' };
-  if (score >= 25000) return { letter: 'A', color: '#B88F4A', label: 'CELESTIAL' };
-  if (score >= 12000) return { letter: 'B', color: '#8FB07C', label: 'SUREFOOTED' };
-  if (score >= 5000)  return { letter: 'C', color: '#7C93B0', label: 'STEADY PACE' };
-  if (score >= 1500)  return { letter: 'D', color: '#C99AA0', label: 'FIRST FLIGHT' };
+  if (score >= 3800) return { letter: 'S', color: '#C8A868', label: 'ASCENDANT' };
+  if (score >= 2600) return { letter: 'A', color: '#B88F4A', label: 'CELESTIAL' };
+  if (score >= 1600) return { letter: 'B', color: '#8FB07C', label: 'SUREFOOTED' };
+  if (score >= 900)  return { letter: 'C', color: '#7C93B0', label: 'STEADY PACE' };
+  if (score >= 400)  return { letter: 'D', color: '#C99AA0', label: 'FIRST FLIGHT' };
   return { letter: 'E', color: '#9AA3B2', label: 'SCRATCH' };
 }
 
