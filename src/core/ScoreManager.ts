@@ -112,7 +112,7 @@ export class ScoreManager {
         this.poorLandings++;
         // Minor penalty to combo timer
         this.comboTimer = Math.min(this.comboTimer, 1.5);
-        this.score += 100;
+        this.score += CONSTANTS.SCUFF_SCORE;
         break;
       case 'MISS':
         // Lost run
@@ -125,19 +125,19 @@ export class ScoreManager {
    */
   public addTricks(trickData: TrickResult): number {
     let trickScore = 0;
-    if (trickData.tricks.length === 0 && trickData.spins === 0 && trickData.airTime < 1.0) {
+    if (trickData.tricks.length === 0 && trickData.spins === 0 && trickData.airTime < 0.6) {
       return 0;
     }
 
     trickScore += trickData.spins * CONSTANTS.SPIN_TRICK_SCORE;
-    trickScore += Math.floor(trickData.airTime * 300);
+    trickScore += Math.floor(trickData.airTime * 80);
 
-    if (trickData.tricks.includes('AIR DASH')) trickScore += 400;
-    if (trickData.tricks.includes('BIG AIR')) trickScore += 800;
-    if (trickData.tricks.includes('CORKSCREW')) trickScore += 400;
-    if (trickData.tricks.includes('BACKFLIP')) trickScore += 500;
-    if (trickData.tricks.includes('COMET SPIN')) trickScore += 700;
-    if (trickData.tricks.includes('RAIL GRIND')) trickScore += 600;
+    if (trickData.tricks.includes('AIR DASH')) trickScore += 120;
+    if (trickData.tricks.includes('BIG AIR')) trickScore += 250;
+    if (trickData.tricks.includes('CORKSCREW')) trickScore += 160;
+    if (trickData.tricks.includes('BACKFLIP')) trickScore += 200;
+    if (trickData.tricks.includes('COMET SPIN')) trickScore += 260;
+    if (trickData.tricks.includes('RAIL GRIND')) trickScore += 220;
 
     const totalAward = Math.round(trickScore * this.multiplier);
     this.score += totalAward;
@@ -170,12 +170,13 @@ export class ScoreManager {
   }
 
   public addBumperHit(): void {
-    this.score += 350 * this.combo;
+    this.score += Math.round(150 * this.multiplier);
+    this.incrementCombo(1);
     this.comboTimer = CONSTANTS.COMBO_DECAY_TIME;
   }
 
   public addSpringLaunch(): void {
-    this.score += 500 * this.combo;
+    this.score += Math.round(250 * this.multiplier);
     this.incrementCombo(1);
     this.comboTimer = CONSTANTS.COMBO_DECAY_TIME;
   }
@@ -257,12 +258,25 @@ export class ScoreManager {
 
   public saveScore(): void {
     this.saveLifetimeStats();
-    if (this.score >= this.highScore) {
+    const curSaved = Number(localStorage.getItem(`bounce_high_score_${this.currentMode}`) ?? 0) || 0;
+    const bestSoFar = Math.max(curSaved, this.highScore);
+    if (this.score > bestSoFar) {
+      this.isNewRecord = true;
       this.highScore = this.score;
       localStorage.setItem(`bounce_high_score_${this.currentMode}`, this.highScore.toString());
+    } else {
+      this.highScore = Math.max(bestSoFar, this.score);
+      localStorage.setItem(`bounce_high_score_${this.currentMode}`, this.highScore.toString());
+      this.isNewRecord = false;
     }
-    if (this.runTime > 0 && this.runTime < this.bestTime) {
+
+    const curBestTime = Number(localStorage.getItem(`bounce_best_time_${this.currentMode}`) ?? 0) || 9999;
+    const minTimeSoFar = Math.min(curBestTime, this.bestTime);
+    if (this.runTime > 0 && this.runTime < minTimeSoFar && (this.currentMode !== 'time_attack' || this.distance > 60)) {
       this.bestTime = this.runTime;
+      localStorage.setItem(`bounce_best_time_${this.currentMode}`, this.bestTime.toString());
+    } else if (minTimeSoFar < 9999) {
+      this.bestTime = minTimeSoFar;
       localStorage.setItem(`bounce_best_time_${this.currentMode}`, this.bestTime.toString());
     }
   }

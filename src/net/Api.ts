@@ -520,6 +520,16 @@ export class NetworkApi {
     localStorage.setItem(KEY_BEST_DIST, String(newBestDist));
     localStorage.setItem(KEY_BEST_COMBO, String(newBestCombo));
 
+    // Save guaranteed highest score for the specific mode
+    const curHighScore = Number(localStorage.getItem(`bounce_high_score_${payload.mode}`) ?? 0) || 0;
+    const bestModeScore = Math.max(curHighScore, payload.score);
+    localStorage.setItem(`bounce_high_score_${payload.mode}`, String(bestModeScore));
+
+    const curGlobalBest = Number(localStorage.getItem('bounce.stat.bestScore') ?? 0) || 0;
+    if (bestModeScore > curGlobalBest) {
+      localStorage.setItem('bounce.stat.bestScore', String(bestModeScore));
+    }
+
     if (
       payload.mode === 'time_attack' &&
       payload.runTime > 3 &&
@@ -527,10 +537,12 @@ export class NetworkApi {
     ) {
       const curBestTime =
         Number(localStorage.getItem(KEY_BEST_TIME) ?? 0) || 0;
-      if (curBestTime === 0 || payload.runTime < curBestTime) {
-        localStorage.setItem(KEY_BEST_TIME, String(payload.runTime));
-      }
+      const minBestTime = curBestTime === 0 ? payload.runTime : Math.min(curBestTime, payload.runTime);
+      localStorage.setItem(KEY_BEST_TIME, String(minBestTime));
+      localStorage.setItem(`bounce_best_time_${payload.mode}`, String(minBestTime));
     }
+
+    this.invalidateLeaderboardCache();
 
     const optimisticProgression: ProgressionStats = {
       lifetimeCoins: localCoins,
@@ -692,16 +704,48 @@ export class NetworkApi {
         });
 
         if (data && !error) {
-          const entries: LeaderboardEntry[] = data.map((row: any) => ({
+          let entries: LeaderboardEntry[] = data.map((row: any) => ({
             userId: row.user_id,
             displayName: row.display_name,
-            score: row.score,
-            distance: row.distance,
-            runTime: row.run_time,
+            score: Number(row.score) || 0,
+            distance: Number(row.distance) || 0,
+            runTime: Number(row.run_time) || 0,
             createdAt: row.created_at,
             rank: Number(row.rank),
             isYou: Boolean(row.is_you),
           }));
+
+          const localScore = Number(localStorage.getItem(`bounce_high_score_${mode}`) ?? 0) || 0;
+          const localTime = Number(localStorage.getItem(`bounce_best_time_${mode}`) ?? 0) || 0;
+
+          let you = entries.find((e) => e.isYou);
+          if (you) {
+            if (localScore > you.score) you.score = localScore;
+            if (localTime > 0 && (you.runTime === 0 || localTime < you.runTime)) you.runTime = localTime;
+          } else if (localScore > 0 || localTime > 0) {
+            const profile = this.getProfile();
+            entries.push({
+              userId: profile.id,
+              displayName: profile.displayName,
+              score: localScore,
+              distance: Number(localStorage.getItem(KEY_BEST_DIST) ?? 0) || 0,
+              runTime: localTime > 0 ? localTime : 65.0,
+              createdAt: new Date().toISOString(),
+              rank: 1,
+              isYou: true,
+            });
+          }
+
+          if (mode === 'time_attack') {
+            entries.sort((a, b) => a.runTime - b.runTime);
+          } else {
+            entries.sort((a, b) => b.score - a.score);
+          }
+          entries.forEach((e, i) => { e.rank = i + 1; });
+
+          if (scope === 'me') {
+            entries = entries.filter((e) => e.isYou);
+          }
 
           this.leaderboardCache.set(cacheKey, {
             data: entries,
@@ -715,29 +759,68 @@ export class NetworkApi {
     }
 
     // Fallback offline simulated rivals with current player rank
-    return this.getFallbackLeaderboard(mode);
+    return this.getFallbackLeaderboard(mode, windowRange, scope);
   }
 
   public invalidateLeaderboardCache(): void {
     this.leaderboardCache.clear();
   }
 
-  private getFallbackLeaderboard(mode: GameModeId): LeaderboardEntry[] {
-    const defaultRivals = [
-      { name: 'Kaira', t: 54.384, s: 185200, d: 2400 },
-      { name: 'Nox', t: 56.633, s: 164000, d: 2150 },
-      { name: 'Pip', t: 57.467, s: 142800, d: 1980 },
-      { name: 'Luna', t: 58.92, s: 128500, d: 1820 },
-      { name: 'Zephyr', t: 59.301, s: 119000, d: 1740 },
-      { name: 'Aurora', t: 60.112, s: 105400, d: 1600 },
-      { name: 'Rift', t: 60.778, s: 92300, d: 1480 },
-      { name: 'Solace', t: 61.335, s: 84000, d: 1390 },
-      { name: 'Vex', t: 61.889, s: 76500, d: 1280 },
-      { name: 'Wren', t: 62.74, s: 68900, d: 1150 },
-      { name: 'Halcyon', t: 63.508, s: 59400, d: 1040 },
-      { name: 'Ember', t: 64.221, s: 48200, d: 920 },
-    ];
+  private getFallbackLeaderboard(
+    mode: GameModeId,
+    _windowRange: LeaderboardWindow = 'all',
+    scope: LeaderboardScope = 'global'
+  ): LeaderboardEntry[] {
+    const defaultRivalsByMode: Record<GameModeId, Array<{ name: string; t: number; s: number; d: number }>> = {
+      arcade: [
+        { name: 'Kaira', t: 54.384, s: 24500, d: 2400 },
+        { name: 'Nox', t: 56.633, s: 21800, d: 2150 },
+        { name: 'Pip', t: 57.467, s: 18900, d: 1980 },
+        { name: 'Luna', t: 58.920, s: 16400, d: 1820 },
+        { name: 'Zephyr', t: 59.301, s: 14200, d: 1740 },
+        { name: 'Aurora', t: 60.112, s: 12500, d: 1600 },
+        { name: 'Rift', t: 60.778, s: 10800, d: 1480 },
+        { name: 'Solace', t: 61.335, s: 9100, d: 1390 },
+        { name: 'Vex', t: 61.889, s: 7600, d: 1280 },
+        { name: 'Wren', t: 62.740, s: 6200, d: 1150 },
+        { name: 'Halcyon', t: 63.508, s: 5100, d: 1040 },
+        { name: 'Ember', t: 64.221, s: 4200, d: 920 },
+      ],
+      time_attack: [
+        { name: 'Kaira', t: 26.412, s: 18200, d: 1400 },
+        { name: 'Zephyr', t: 28.190, s: 16100, d: 1400 },
+        { name: 'Nox', t: 30.245, s: 14500, d: 1400 },
+        { name: 'Pip', t: 32.890, s: 12800, d: 1400 },
+        { name: 'Luna', t: 35.112, s: 11200, d: 1400 },
+        { name: 'Aurora', t: 37.450, s: 9800, d: 1400 },
+        { name: 'Solace', t: 41.200, s: 8400, d: 1400 },
+      ],
+      score_attack: [
+        { name: 'Pip', t: 60.0, s: 38500, d: 1800 },
+        { name: 'Kaira', t: 60.0, s: 31200, d: 1650 },
+        { name: 'Zephyr', t: 60.0, s: 26400, d: 1520 },
+        { name: 'Nox', t: 60.0, s: 21900, d: 1380 },
+        { name: 'Luna', t: 60.0, s: 17500, d: 1200 },
+      ],
+      endless: [
+        { name: 'Zephyr', t: 142.0, s: 28400, d: 5200 },
+        { name: 'Kaira', t: 120.5, s: 23100, d: 4100 },
+        { name: 'Nox', t: 98.4, s: 18600, d: 3200 },
+        { name: 'Aurora', t: 75.0, s: 13900, d: 2400 },
+      ],
+      daily: [
+        { name: 'Luna', t: 88.0, s: 22400, d: 3600 },
+        { name: 'Pip', t: 72.0, s: 17800, d: 2800 },
+        { name: 'Vex', t: 55.0, s: 12500, d: 1900 },
+      ],
+      master: [
+        { name: 'Kaira', t: 48.0, s: 32000, d: 2800 },
+        { name: 'Nox', t: 42.0, s: 26500, d: 2300 },
+        { name: 'Zephyr', t: 36.0, s: 21000, d: 1800 },
+      ],
+    };
 
+    const rivals = defaultRivalsByMode[mode] || defaultRivalsByMode.arcade;
     const localProfile = this.getProfile();
     const savedScore =
       Number(localStorage.getItem(`bounce_high_score_${mode}`) ?? 0) || 0;
@@ -748,14 +831,14 @@ export class NetworkApi {
     const savedDist =
       Number(localStorage.getItem(KEY_BEST_DIST) ?? 0) || 0;
 
-    const list: Array<{
+    let list: Array<{
       name: string;
       s: number;
       t: number;
       d: number;
       isYou: boolean;
       id: string;
-    }> = defaultRivals.map((r, i) => ({
+    }> = rivals.map((r, i) => ({
       name: r.name,
       s: r.s,
       t: r.t,
@@ -764,7 +847,7 @@ export class NetworkApi {
       id: `bot-${i}`,
     }));
 
-    if (savedScore > 0 || savedTime > 0) {
+    if (savedScore > 0 || savedTime > 0 || savedDist > 0) {
       list.push({
         name: localProfile.displayName,
         s: savedScore,
@@ -781,7 +864,7 @@ export class NetworkApi {
       list.sort((a, b) => b.s - a.s);
     }
 
-    return list.map((r, i) => ({
+    const allRanked = list.map((r, i) => ({
       userId: r.id,
       displayName: r.name,
       score: r.s,
@@ -791,6 +874,17 @@ export class NetworkApi {
       rank: i + 1,
       isYou: r.isYou,
     }));
+
+    if (scope === 'me') {
+      const youEntry = allRanked.find((r) => r.isYou);
+      return youEntry ? [youEntry] : [];
+    }
+
+    if (scope === 'friends') {
+      return allRanked.filter((r, i) => r.isYou || i < 5);
+    }
+
+    return allRanked;
   }
 
   // --------------------------------------------------------------------------

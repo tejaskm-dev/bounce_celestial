@@ -275,6 +275,13 @@ export class Game {
       }
       this.music.setIntensity(1.0 + (combo / CONSTANTS.COMBO_MAX_MULTIPLIER) * 3.0);
     });
+
+    // Ability Ready Floating Notification & Audio Cue
+    this.abilities.setOnReady((abilityId) => {
+      if (this.state.getState() === GameStateEnum.PLAYING) {
+        this.hud.showAbilityReady(abilityId);
+      }
+    });
   }
 
   /**
@@ -298,6 +305,10 @@ export class Game {
   }
 
   private returnToTitle(): void {
+    if (this.score.score > 0) {
+      this.score.saveScore();
+      this.submitCurrentRun();
+    }
     this.gameOverScreen.hide();
     this.infoModal.hide();
     this.hud.show(false);
@@ -316,6 +327,10 @@ export class Game {
   }
 
   private startIntroOrCountdown(): void {
+    if (this.score.score > 0 && this.state.getState() === GameStateEnum.PLAYING) {
+      this.score.saveScore();
+      this.submitCurrentRun();
+    }
     // Fullscreen for the session, not for the run: leaving and re-entering on
     // every retry would be worse than never entering at all. Nothing here is
     // awaited — a refused request must not delay the countdown.
@@ -965,10 +980,10 @@ export class Game {
     const ab = this.abilities;
     const abActive = ab.active > 0;
 
-    // TEMPO slows the world but not the player's authority over it: the time
-    // scale drops while steering and the perfect window stay at full rate,
-    // which is what makes it feel like clarity rather than sluggishness.
-    if (abActive && ab.equipped === 'tempo') this.timeScale = Math.min(this.timeScale, 0.34);
+    // TEMPO slows the world (dynamic obstacles, hazards, hazard rotations)
+    // to a third while the player moves and steers at full normal speed,
+    // making every jump landing a guaranteed perfect bounce.
+    // (World delta scaling is applied to course & obstacle updates below)
 
     // COMET: speed, immunity, and coins pulled in.
     if (abActive && ab.equipped === 'comet') {
@@ -1138,13 +1153,9 @@ export class Game {
 
       const wantsBig = this.jumpBuffer > 0 || this.input.actionHeld;
       // PERFECT BOUNCE: the press landed inside the window around touchdown.
-      //
-      // This used to test `landedTimer <= CHAIN_WINDOW` — time since the *last*
-      // landing — which at a landing is always the full flight time, so the
-      // condition could never be true and the perfect bounce silently did not
-      // exist. What it should measure, and now does, is how close the player's
-      // press was to the moment of contact.
-      const chained = this.pressAge <= CONSTANTS.CHAIN_WINDOW;
+      // With TEMPO active, the clarity of slowed world time guarantees perfect bounces.
+      const isTempo = this.abilities.active > 0 && this.abilities.equipped === 'tempo';
+      const chained = (this.pressAge <= CONSTANTS.CHAIN_WINDOW) || (isTempo && wantsBig);
 
       // Same gravity for both, so the arc a player learns stays the arc they
       // trust — only the launch speed changes.
@@ -1202,7 +1213,10 @@ export class Game {
     // Rolling bleeds a little speed, so holding a line is not free and the
     // chain jump has something to give back.
     if (this.ball.isGrounded) {
-      this.bonusBoost = Math.max(0, this.bonusBoost - CONSTANTS.ROLL_FRICTION * delta);
+      this.currentSpeed = Math.max(
+        this.baseSpeed * 0.85,
+        this.currentSpeed - CONSTANTS.ROLL_FRICTION * delta
+      );
     }
 
     // 9. Collision & Landing Detection
@@ -1442,9 +1456,13 @@ export class Game {
       { x: lookX, y: lookY }
     );
 
-    this.particles.emitSpeedWake(this.ball.position, this.ball.isDashing);
-    this.course.update(this.ball.position.z, delta);
-    this.skybox.update(this.ball.position.z, delta);
+    // Dynamic course obstacles (pendulums, rotating lasers, hazard rings)
+    // are slowed to 1/3 when Tempo is active while player moves at 100% normal speed.
+    const isTempoActive = this.abilities.active > 0 && this.abilities.equipped === 'tempo';
+    const worldDelta = isTempoActive ? delta * 0.333 : delta;
+
+    this.course.update(this.ball.position.z, worldDelta);
+    this.skybox.update(this.ball.position.z, worldDelta);
     this.bridge.update(this.ball.position.z);
     this.cameraRig.update(
       this.ball.position,

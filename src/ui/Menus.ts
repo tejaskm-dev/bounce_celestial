@@ -547,12 +547,15 @@ export class Menus {
 
     // Set "Your Best" footer
     if (yourBestEl) {
+      const savedScore = Number(localStorage.getItem(`bounce_high_score_${this.boardMode}`) ?? 0) || 0;
+      const savedTime = Number(localStorage.getItem(`bounce_best_time_${this.boardMode}`) ?? 0) || 0;
+
       if (youEntry) {
-        const val = isTimeAttack ? fmtTime(youEntry.runTime) : `${youEntry.score.toLocaleString('en-US')} pts`;
+        const bestDisplayScore = Math.max(youEntry.score, savedScore);
+        const bestDisplayTime = savedTime > 0 && youEntry.runTime > 0 ? Math.min(youEntry.runTime, savedTime) : (youEntry.runTime || savedTime);
+        const val = isTimeAttack ? fmtTime(bestDisplayTime) : `${bestDisplayScore.toLocaleString('en-US')} pts`;
         yourBestEl.textContent = `Rank #${youEntry.rank} · ${val}`;
       } else {
-        const savedScore = Number(localStorage.getItem(`bounce_high_score_${this.boardMode}`) ?? 0) || 0;
-        const savedTime = Number(localStorage.getItem(`bounce_best_time_${this.boardMode}`) ?? 0) || 0;
         if (isTimeAttack && savedTime > 0) {
           yourBestEl.textContent = fmtTime(savedTime);
         } else if (savedScore > 0) {

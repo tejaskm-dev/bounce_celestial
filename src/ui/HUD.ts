@@ -1,5 +1,6 @@
 import { ScoreManager } from '../core/ScoreManager';
 import { CourseSegment } from '../world/CourseSegment';
+import { AbilityId, ABILITIES } from '../game/Abilities';
 
 export type BannerType = 'perfect' | 'near-miss' | 'trick' | 'combo-streak' | 'warn';
 
@@ -296,6 +297,30 @@ export class HUD {
     }
 
     this.floaterContainer.appendChild(banner);
+    banner.addEventListener('animationend', () => {
+      banner.remove();
+    });
+  }
+
+  public showAbilityReady(abilityId: AbilityId): void {
+    const banner = document.createElement('div');
+    banner.className = 'ability-ready-banner';
+
+    const iconId = `ic-${abilityId === 'featherfall' ? 'feather' : abilityId}`;
+    const def = ABILITIES[abilityId];
+    const name = def ? def.name : abilityId.toUpperCase();
+
+    banner.innerHTML = `
+      <svg class="ability-ready-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <use href="#${iconId}"/>
+      </svg>
+      <div class="ability-ready-text">
+        <div class="ability-ready-title">${name} READY</div>
+        <div class="ability-ready-sub">AVAILABLE TO USE</div>
+      </div>
+    `;
+
+    document.body.appendChild(banner);
     banner.addEventListener('animationend', () => {
       banner.remove();
     });

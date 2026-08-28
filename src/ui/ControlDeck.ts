@@ -254,10 +254,8 @@ export class ControlDeck {
 
     if (!a.isUnlocked(id)) this.ability.set('locked', 1);
     else if (a.isActive) this.ability.set('active', 1);
+    else if (a.isCooldown) this.ability.set('cooldown', 1 - a.cooldownRatio);
     else if (a.ready) this.ability.set('ready', 1);
-    // Charging, not cooling down. At zero coins the ability is equipped and
-    // waiting — painting it in the dimmed cooldown treatment made a perfectly
-    // usable slot look broken for the first half of every run.
     else this.ability.set('charging', a.fill);
     this.ability.buildSegments(a.maxCharges);
     this.ability.setSegments(a.charges, a.charges < a.maxCharges ? a.fill : 0);

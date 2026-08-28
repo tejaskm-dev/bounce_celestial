@@ -1740,104 +1740,160 @@
         opacity: 0; transition: opacity 420ms var(--ease-soft);
       }
       .board.on { opacity: 1; pointer-events: auto; }
+
       .board-panel {
         position: absolute; top: 0; bottom: 0; right: 0;
-        width: clamp(320px, 42vw, 720px);
+        width: clamp(380px, 44vw, 700px);
         display: flex; flex-direction: column;
-        padding: clamp(20px, 2.4vw, 46px) clamp(18px, 2.2vw, 44px) clamp(16px, 1.8vw, 34px);
+        padding: clamp(16px, 2vw, 32px) clamp(16px, 1.8vw, 32px) clamp(12px, 1.4vw, 24px);
         background: linear-gradient(196deg, rgba(255,255,255,0.98), rgba(242,247,252,0.95));
         box-shadow: -30px 0 70px rgba(37,48,70,0.16);
         transform: translateX(102%);
         transition: transform 680ms var(--ease-out);
         overflow: hidden;
-        /* The angled leading edge from the reference, cut into the panel
-           itself so the seam is real geometry rather than an overlaid shape. */
-        clip-path: polygon(118px 0, 100% 0, 100% 100%, 0 100%);
-        padding-left: clamp(70px, 7.5vw, 132px);
+        /* Dynamic angled leading edge matching reference */
+        clip-path: polygon(clamp(48px, 5.5vw, 92px) 0, 100% 0, 100% 100%, 0 100%);
+        padding-left: clamp(52px, 6.2vw, 102px);
       }
       .board.on .board-panel { transform: none; }
-      /* The diagonal seam from the reference. */
-      /* A gilt hairline running down the cut. */
+      /* Gilded hairline running along the seam */
       .board-panel::before {
         content: ''; position: absolute; top: 0; bottom: 0; left: 0;
-        width: 122px;
+        width: clamp(52px, 6.2vw, 96px);
         background: linear-gradient(196deg, rgba(200,168,104,0.9), rgba(200,168,104,0.28));
-        clip-path: polygon(118px 0, 120px 0, 2px 100%, 0 100%);
+        clip-path: polygon(clamp(48px, 5.5vw, 92px) 0, clamp(49.5px, 5.7vw, 93.5px) 0, 2px 100%, 0 100%);
       }
       .board-panel > * { position: relative; z-index: 1; }
 
       .board-head {
         display: flex; align-items: center; justify-content: center;
-        gap: clamp(10px, 1.1vw, 20px); margin-bottom: clamp(12px, 1.3vw, 24px);
+        gap: clamp(8px, 1vw, 16px); margin-bottom: clamp(6px, 0.8vw, 12px);
+        flex-shrink: 0;
       }
-      .board-orn { color: var(--hud-gold); font-size: clamp(11px, 1vw, 17px); }
+      .board-orn { color: var(--hud-gold); font-size: clamp(10px, 0.9vw, 15px); }
       .board-title {
         font-family: var(--font-display); font-weight: 700;
-        font-size: clamp(17px, 1.75vw, 32px); letter-spacing: 0.30em;
+        font-size: clamp(14px, 1.5vw, 24px); letter-spacing: 0.28em;
         text-transform: uppercase; color: var(--hud-navy);
       }
+
+      /* Mode selector tabs */
+      .board-mode-tabs {
+        display: flex; gap: 4px; margin: 0 auto clamp(5px, 0.7vw, 10px);
+        overflow-x: auto; -webkit-overflow-scrolling: touch;
+        scrollbar-width: none; flex-shrink: 0;
+        padding: 3px; border-radius: 9px;
+        border: 1px solid rgba(184, 143, 74, 0.25); background: rgba(255,255,255,0.45);
+        max-width: 100%;
+      }
+      .board-mode-tabs::-webkit-scrollbar { display: none; }
+      .board-mode-tab {
+        cursor: pointer; border: 0; background: none; border-radius: 6px;
+        padding: clamp(3px, 0.5vw, 6px) clamp(7px, 0.9vw, 12px);
+        font-family: var(--font-body); font-weight: 600;
+        font-size: clamp(7.5px, 0.6vw, 9.5px); letter-spacing: 0.14em;
+        text-transform: uppercase; color: var(--hud-navy-so); white-space: nowrap;
+        transition: color 200ms, background 200ms;
+        flex-shrink: 0;
+      }
+      .board-mode-tab.active {
+        color: var(--hud-navy); background: rgba(200, 168, 104, 0.22);
+      }
+
+      /* Scope & Window filter tabs row */
+      .board-tabs-row {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 6px; margin-bottom: clamp(5px, 0.7vw, 10px); flex-shrink: 0;
+      }
       .board-tabs {
-        display: flex; gap: 0; margin: 0 auto clamp(14px, 1.5vw, 26px);
-        padding: 4px; border-radius: 12px;
+        display: flex; gap: 0; margin: 0 !important;
+        padding: 2.5px; border-radius: 8px;
         border: 1px solid rgba(184,143,74,0.32); background: rgba(255,255,255,0.6);
       }
       .board-tab {
-        cursor: pointer; border: 0; background: none; border-radius: 9px;
-        padding: clamp(7px,0.72vw,13px) clamp(18px,1.9vw,38px);
+        cursor: pointer; border: 0; background: none; border-radius: 6px;
+        padding: clamp(3px, 0.5vw, 6px) clamp(8px, 1vw, 16px) !important;
         font-family: var(--font-body); font-weight: 500;
-        font-size: clamp(8.5px,0.7vw,12px); letter-spacing: 0.22em;
+        font-size: clamp(7.5px, 0.6vw, 9.5px); letter-spacing: 0.16em;
         text-transform: uppercase; color: var(--hud-navy-so);
-        transition: color 400ms var(--ease-soft), background 400ms var(--ease-soft);
+        transition: color 300ms var(--ease-soft), background 300ms var(--ease-soft);
       }
-      .board-tab.active { color: var(--hud-navy); background: rgba(200,168,104,0.18); }
+      .board-tab.active { color: var(--hud-navy); background: rgba(200,168,104,0.2); }
       .board-tab:hover { color: var(--hud-navy); }
 
-      .board-cols {
-        display: grid; grid-template-columns: clamp(48px,5vw,86px) 1fr auto;
-        gap: clamp(8px,0.9vw,18px); padding: 0 clamp(18px,1.8vw,32px) clamp(7px,0.7vw,12px);
-        font-size: clamp(7px,0.58vw,10px); letter-spacing: 0.24em;
-        text-transform: uppercase; color: var(--hud-navy-so);
+      .board-window-tabs {
+        display: flex; gap: 2px;
+        padding: 2.5px; border-radius: 8px;
+        border: 1px solid rgba(184, 143, 74, 0.25); background: rgba(255,255,255,0.45);
       }
-      .board-cols span:last-child { text-align: right; }
-      .board-list {
-        flex: 1; overflow-y: auto; overflow-x: hidden;
-        display: flex; flex-direction: column; gap: 4px; align-items: stretch;
+      .board-win-tab {
+        cursor: pointer; border: 0; background: none; border-radius: 6px;
+        padding: clamp(3px, 0.5vw, 6px) clamp(7px, 0.85vw, 12px);
+        font-family: var(--font-body); font-size: clamp(7.5px, 0.6vw, 9.5px);
+        letter-spacing: 0.14em; text-transform: uppercase; color: var(--hud-navy-so);
+        transition: color 200ms, background 200ms;
+      }
+      .board-win-tab.active {
+        color: var(--hud-navy); background: rgba(200, 168, 104, 0.2);
       }
 
-      /* Rows rake with the panel's cut. The shear is applied to the card and
-         undone on its contents, so the edges are angular but nothing reads as
-         italic or misaligned. */
+      .board-cols {
+        display: grid; grid-template-columns: clamp(34px, 4vw, 56px) 1fr auto;
+        gap: clamp(6px, 0.8vw, 14px); padding: 0 clamp(10px, 1.1vw, 18px) clamp(2px, 0.3vw, 5px);
+        font-size: clamp(6.5px, 0.55vw, 8.5px); letter-spacing: 0.22em;
+        text-transform: uppercase; color: var(--hud-navy-so);
+        flex-shrink: 0;
+      }
+      .board-cols span:last-child { text-align: right; }
+
+      .board-list {
+        flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+        display: flex; flex-direction: column; gap: clamp(3px, 0.45vw, 5px); align-items: stretch;
+        -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+        padding-right: 2px;
+      }
+      .board-list::-webkit-scrollbar { width: 4px; }
+      .board-list::-webkit-scrollbar-thumb {
+        background: rgba(184,143,74,0.45); border-radius: 2px;
+      }
+      .board-list::-webkit-scrollbar-track { background: transparent; }
+
+      /* Rows */
       .board-row {
-        display: grid; grid-template-columns: clamp(48px,5vw,86px) 1fr auto;
-        align-items: center; gap: clamp(8px,0.9vw,18px);
-        padding: clamp(9px,0.95vw,16px) clamp(14px,1.4vw,26px);
-        border: 1px solid rgba(184,143,74,0.2); border-radius: 11px;
+        display: grid; grid-template-columns: clamp(34px, 4vw, 56px) 1fr auto;
+        align-items: center; gap: clamp(6px, 0.8vw, 14px);
+        padding: clamp(5px, 0.7vw, 10px) clamp(10px, 1.1vw, 18px);
+        border: 1px solid rgba(184,143,74,0.2); border-radius: 9px;
         background: rgba(255,255,255,0.6);
         transform: skewX(-6deg);
-        animation: boardIn 560ms var(--ease-out) backwards;
-        transition: border-color 420ms var(--ease-soft), transform 420ms var(--ease-out),
-                    background 420ms var(--ease-soft);
+        animation: boardIn 420ms var(--ease-out) backwards;
+        transition: border-color 300ms var(--ease-soft), transform 300ms var(--ease-out),
+                    background 300ms var(--ease-soft);
+        flex-shrink: 0;
       }
       .board-row > * { transform: skewX(6deg); }
-      .board-row:hover { border-color: var(--hud-gold); transform: skewX(-6deg) translateX(-5px); }
+      .board-row:hover { border-color: var(--hud-gold); transform: skewX(-6deg) translateX(-4px); }
       @keyframes boardIn {
-        from { opacity: 0; transform: skewX(-6deg) translateX(30px); }
+        from { opacity: 0; transform: skewX(-6deg) translateX(20px); }
         to   { opacity: 1; transform: skewX(-6deg); }
       }
 
       .board-rank {
         font-family: var(--font-display); font-weight: 700;
-        font-size: clamp(11px, 0.95vw, 17px); color: var(--hud-navy-so);
+        font-size: clamp(9.5px, 0.85vw, 14px); color: var(--hud-navy-so);
         font-variant-numeric: tabular-nums;
       }
-      /* Top three get a cut diamond medal, as in the reference. */
       .board-medal {
-        width: clamp(24px,2.2vw,38px); aspect-ratio: 1; display: grid; place-items: center;
-        transform: rotate(45deg); border-radius: 5px;
+        width: clamp(18px, 1.7vw, 26px); aspect-ratio: 1; display: grid; place-items: center;
+        transform: skewX(6deg) rotate(45deg) !important; border-radius: 4px;
         border: 1.5px solid var(--hud-gold); background: rgba(255,255,255,0.9);
+        flex-shrink: 0;
       }
-      .board-medal span { transform: rotate(-45deg); font-family: var(--font-display);
-        font-weight: 700; font-size: clamp(10px,0.85vw,15px); color: var(--hud-gold-lo); }
+      .board-medal span {
+        display: block; transform: rotate(-45deg) !important; font-family: var(--font-display);
+        font-weight: 700; font-size: clamp(8.5px, 0.75vw, 12px); color: var(--hud-gold-lo);
+        line-height: 1; text-align: center;
+      }
       .board-row.r2 .board-medal { border-color: #97A6BC; }
       .board-row.r2 .board-medal span { color: #6F7F97; }
       .board-row.r3 .board-medal { border-color: #C08A5A; }
@@ -1845,19 +1901,23 @@
 
       .board-name {
         font-family: var(--font-display); font-weight: 600;
-        font-size: clamp(11px, 0.98vw, 18px); letter-spacing: 0.14em;
-        text-transform: uppercase; color: var(--hud-navy); overflow-wrap: anywhere;
+        font-size: clamp(9.5px, 0.85vw, 13.5px); letter-spacing: 0.10em;
+        text-transform: uppercase; color: var(--hud-navy);
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .board-player-tag {
+        font-size: 0.74em; opacity: 0.65; margin-left: 4px; font-family: var(--font-num);
       }
       .board-time {
         font-family: var(--font-display); font-weight: 600;
-        font-size: clamp(11px, 0.98vw, 18px); color: var(--hud-navy);
+        font-size: clamp(9.5px, 0.85vw, 14px); color: var(--hud-navy);
         font-variant-numeric: tabular-nums; white-space: nowrap;
       }
-      /* The player's own row is the hero of the board. */
       .board-row.you {
         border-color: var(--hud-gold); border-width: 1.5px;
         background: linear-gradient(100deg, rgba(200,168,104,0.2), rgba(200,168,104,0.06));
-        box-shadow: 0 6px 22px rgba(200,168,104,0.24);
+        box-shadow: 0 4px 16px rgba(200,168,104,0.2);
+        position: relative;
       }
       .board-row.you .board-name, .board-row.you .board-time { color: var(--hud-gold-lo); }
       .board-row.you::after {
@@ -1865,53 +1925,234 @@
         box-shadow: 0 0 0 0 rgba(200,168,104,0.5);
         animation: youPulse 3.2s var(--ease-soft) infinite; pointer-events: none;
       }
-      @keyframes youPulse {
-        0%, 100% { box-shadow: 0 0 0 0 rgba(200,168,104,0.32); }
-        50%      { box-shadow: 0 0 0 7px rgba(200,168,104,0); }
-      }
-      .board-row.you { position: relative; }
-      .board-row.you:hover { transform: skewX(-6deg) translateX(-5px); }
 
       .board-foot {
         display: flex; align-items: center; justify-content: space-between;
-        gap: 12px; margin-top: clamp(12px,1.3vw,24px);
-        padding: clamp(11px,1.15vw,20px) clamp(14px,1.4vw,26px);
-        border: 1px solid var(--hud-gold); border-radius: 12px;
+        gap: 8px; margin-top: clamp(5px, 0.7vw, 10px);
+        padding: clamp(6px, 0.75vw, 11px) clamp(10px, 1.1vw, 18px);
+        border: 1px solid var(--hud-gold); border-radius: 9px;
         background: linear-gradient(100deg, rgba(200,168,104,0.14), rgba(200,168,104,0.04));
-        transform: skewX(-6deg);
+        transform: skewX(-6deg); flex-shrink: 0;
       }
       .board-foot > * { transform: skewX(6deg); }
       .board-foot span {
-        font-size: clamp(7.5px,0.62vw,11px); letter-spacing: 0.26em;
+        font-size: clamp(6.5px, 0.52vw, 9px); letter-spacing: 0.20em;
         text-transform: uppercase; color: var(--hud-navy-so);
       }
       .board-foot b {
         font-family: var(--font-display); font-weight: 700;
-        font-size: clamp(14px,1.3vw,24px); color: var(--hud-gold-lo);
+        font-size: clamp(11px, 1vw, 16px); color: var(--hud-gold-lo);
         font-variant-numeric: tabular-nums;
       }
+
       .board-close {
-        margin-top: clamp(9px,0.95vw,17px); cursor: pointer;
-        border: 1px solid rgba(184,143,74,0.45); border-radius: 10px;
+        margin-top: clamp(5px, 0.65vw, 10px); cursor: pointer;
+        border: 1px solid rgba(184,143,74,0.45); border-radius: 8px;
         background: rgba(255,255,255,0.7);
-        padding: clamp(9px,0.9vw,16px);
-        font-family: var(--font-body); font-size: clamp(7.5px,0.62vw,11px);
-        letter-spacing: 0.24em; text-transform: uppercase; color: var(--hud-navy-so);
+        padding: clamp(6px, 0.65vw, 10px);
+        font-family: var(--font-body); font-size: clamp(7px, 0.52vw, 9px);
+        letter-spacing: 0.20em; text-transform: uppercase; color: var(--hud-navy-so);
         position: relative; isolation: isolate; overflow: hidden;
-        transition: color 420ms var(--ease-soft), border-color 420ms var(--ease-soft);
+        transition: color 300ms var(--ease-soft), border-color 300ms var(--ease-soft);
+        flex-shrink: 0;
       }
       .board-close::after {
         content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
         background: linear-gradient(168deg, var(--hud-gold), var(--hud-gold-lo));
-        opacity: 0; transition: opacity 420ms var(--ease-soft);
+        opacity: 0; transition: opacity 300ms var(--ease-soft);
       }
       .board-close:hover { color: #FFFDF7; border-color: transparent; }
       .board-close:hover::after { opacity: 1; }
 
-      @media (max-width: 860px), (pointer: coarse) {
-        .board-panel { width: 100%; }
-        .board-panel::before { display: none; }
-        body.board-open #game-container > canvas { transform: translateY(-16%) scale(0.86); }
+      .board-empty {
+        padding: 24px 12px; text-align: center; font-family: var(--font-display);
+        font-size: clamp(9px, 0.8vw, 12px); letter-spacing: 0.14em;
+        text-transform: uppercase; color: var(--hud-navy-so);
+      }
+
+      /* ------------------------------------------------------------------
+         MOBILE LANDSCAPE ADAPTATIONS (Preserves right split-panel)
+         ------------------------------------------------------------------ */
+      @media (orientation: landscape) and (max-height: 540px),
+             (max-width: 950px) and (orientation: landscape) {
+        .board-panel {
+          width: clamp(330px, 50vw, 540px) !important;
+          clip-path: polygon(clamp(28px, 4vw, 48px) 0, 100% 0, 100% 100%, 0 100%) !important;
+          padding: max(6px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right))
+                   max(6px, env(safe-area-inset-bottom)) clamp(32px, 4.6vw, 54px) !important;
+        }
+        .board-panel::before {
+          display: block !important;
+          width: clamp(30px, 4.2vw, 50px) !important;
+          clip-path: polygon(clamp(28px, 4vw, 48px) 0, clamp(29.5px, 4.2vw, 49.5px) 0, 1.5px 100%, 0 100%) !important;
+        }
+        .board-head {
+          gap: 6px; margin-bottom: clamp(2px, 0.8vh, 5px);
+        }
+        .board-title {
+          font-size: clamp(12px, 2.7vh, 16px); letter-spacing: 0.22em;
+        }
+        .board-orn {
+          font-size: clamp(8px, 1.8vh, 11px);
+        }
+        .board-mode-tabs {
+          margin: 0 auto clamp(2px, 0.7vh, 5px);
+          padding: 2px 3px; gap: 2.5px; border-radius: 6px;
+        }
+        .board-mode-tab {
+          padding: clamp(2px, 0.6vh, 4px) clamp(5px, 1vw, 9px);
+          font-size: clamp(7px, 1.5vh, 8.5px); letter-spacing: 0.10em;
+        }
+        .board-tabs-row {
+          gap: 4px; margin-bottom: clamp(2px, 0.7vh, 5px);
+        }
+        .board-tabs, .board-window-tabs {
+          padding: 1.5px; border-radius: 6px;
+        }
+        .board-tab, .board-win-tab {
+          padding: clamp(2px, 0.55vh, 4px) clamp(5px, 1vw, 10px) !important;
+          font-size: clamp(6.8px, 1.45vh, 8px); letter-spacing: 0.10em;
+        }
+        .board-cols {
+          grid-template-columns: clamp(26px, 3.8vw, 38px) 1fr auto;
+          gap: clamp(4px, 0.8vw, 8px);
+          padding: 0 clamp(6px, 1vw, 12px) clamp(1px, 0.3vh, 3px);
+          font-size: clamp(5.8px, 1.2vh, 7.5px); letter-spacing: 0.16em;
+        }
+        .board-list {
+          gap: clamp(2px, 0.5vh, 3.5px);
+        }
+        .board-row {
+          grid-template-columns: clamp(26px, 3.8vw, 38px) 1fr auto;
+          gap: clamp(4px, 0.8vw, 8px);
+          padding: clamp(3px, 0.85vh, 5.5px) clamp(6px, 1vw, 12px);
+          border-radius: 6px;
+          transform: skewX(-6deg) !important;
+        }
+        .board-row > * { transform: skewX(6deg) !important; }
+        .board-medal {
+          width: clamp(15px, 3.2vh, 20px); aspect-ratio: 1; border-radius: 3px;
+          transform: skewX(6deg) rotate(45deg) !important;
+        }
+        .board-medal span {
+          display: block;
+          transform: rotate(-45deg) !important;
+          font-size: clamp(7px, 1.4vh, 9.5px);
+        }
+        .board-rank {
+          font-size: clamp(8px, 1.6vh, 10.5px);
+        }
+        .board-name {
+          font-size: clamp(8.2px, 1.7vh, 10.5px); letter-spacing: 0.06em;
+        }
+        .board-player-tag {
+          font-size: 0.72em;
+        }
+        .board-time {
+          font-size: clamp(8.5px, 1.7vh, 11px);
+        }
+        .board-foot {
+          margin-top: clamp(2px, 0.7vh, 5px);
+          padding: clamp(3px, 0.75vh, 5.5px) clamp(6px, 1vw, 12px);
+          border-radius: 6px;
+          transform: skewX(-6deg) !important;
+        }
+        .board-foot > * { transform: skewX(6deg) !important; }
+        .board-foot span {
+          font-size: clamp(6.2px, 1.3vh, 8px); letter-spacing: 0.14em;
+        }
+        .board-foot b {
+          font-size: clamp(8.8px, 1.8vh, 12px);
+        }
+        .board-close {
+          margin-top: clamp(2px, 0.7vh, 5px);
+          padding: clamp(3px, 0.8vh, 6px);
+          border-radius: 6px;
+          font-size: clamp(6.8px, 1.4vh, 8.5px); letter-spacing: 0.16em;
+        }
+      }
+
+      /* Extra-compact short screens (height <= 360px, e.g. iPhone SE landscape) */
+      @media (orientation: landscape) and (max-height: 360px) {
+        .board-panel {
+          width: clamp(310px, 49vw, 500px) !important;
+          padding-left: clamp(26px, 4vw, 40px) !important;
+        }
+        .board-cols { display: none; }
+        .board-head { margin-bottom: 1.5px; }
+        .board-title { font-size: 11px; }
+        .board-mode-tabs { margin-bottom: 1.5px; }
+        .board-tabs-row { margin-bottom: 1.5px; }
+        .board-row { padding: 2px 5px; }
+        .board-foot { margin-top: 1.5px; padding: 2px 5px; }
+        .board-close { margin-top: 1.5px; padding: 2.5px 5px; }
+      }
+
+      /* Portrait narrow phones (width <= 540px and portrait orientation) */
+      @media (orientation: portrait) and (max-width: 540px) {
+        .board-panel {
+          width: 100% !important;
+          clip-path: none !important;
+          padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+                   max(6px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)) !important;
+        }
+        .board-panel::before { display: none !important; }
+        .board-tabs-row {
+          flex-wrap: wrap; justify-content: center; gap: 4px;
+        }
+        .board-row {
+          transform: none !important; padding: 6px 10px;
+        }
+        .board-row > * { transform: none !important; }
+        .board-medal { transform: rotate(45deg) !important; }
+        .board-medal span { transform: rotate(-45deg) !important; }
+        .board-foot {
+          transform: none !important; padding: 6px 10px;
+        }
+        .board-foot > * { transform: none !important; }
+        .board-close {
+          padding: 8px;
+        }
+      }
+
+      /* Ability Ready Floating Banner */
+      .ability-ready-banner {
+        position: fixed; top: 22%; left: 50%;
+        transform: translate(-50%, -50%) scale(0.9);
+        display: flex; align-items: center; gap: 12px;
+        padding: clamp(8px, 1.2vh, 12px) clamp(16px, 2.5vw, 24px);
+        background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(246,249,252,0.92));
+        border: 1.5px solid var(--hud-gold);
+        border-radius: 14px;
+        box-shadow: 0 8px 32px rgba(200,168,104,0.35), 0 0 0 1px rgba(255,255,255,0.8) inset;
+        z-index: 48; pointer-events: none;
+        opacity: 0;
+        animation: abilityReadyPop 2.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      @keyframes abilityReadyPop {
+        0% { opacity: 0; transform: translate(-50%, -30%) scale(0.85); }
+        15% { opacity: 1; transform: translate(-50%, -50%) scale(1.04); }
+        22% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        78% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        100% { opacity: 0; transform: translate(-50%, -70%) scale(0.95); }
+      }
+      .ability-ready-icon {
+        width: clamp(24px, 3.8vh, 34px); height: clamp(24px, 3.8vh, 34px);
+        color: var(--hud-gold-lo); flex-shrink: 0;
+        filter: drop-shadow(0 2px 6px rgba(200,168,104,0.4));
+      }
+      .ability-ready-text {
+        display: flex; flex-direction: column; gap: 1px;
+      }
+      .ability-ready-title {
+        font-family: var(--font-display); font-weight: 700;
+        font-size: clamp(11px, 1.8vh, 15px); letter-spacing: 0.22em;
+        text-transform: uppercase; color: var(--hud-navy);
+      }
+      .ability-ready-sub {
+        font-family: var(--font-body); font-weight: 600;
+        font-size: clamp(7.5px, 1.2vh, 9.5px); letter-spacing: 0.16em;
+        text-transform: uppercase; color: var(--hud-gold-lo);
       }
 
       /* Reduced HUD — opt-in, off by default. Keeps combo, section progress,
@@ -2190,498 +2431,6 @@
         border-color: var(--hud-gold);
       }
       .pause-btn.ghost { color: var(--hud-navy-so); }
-
-      /* ==================================================================
-         PAGES — settings, achievements, leaderboard, abilities.
-         ================================================================== */
-      .page {
-        position: fixed; inset: 0; z-index: 44;
-        display: grid; place-items: center; pointer-events: none; opacity: 0;
-        background: radial-gradient(circle at 50% 42%,
-          rgba(255,255,255,0.55), rgba(184,205,228,0.5));
-        backdrop-filter: blur(7px);
-        transition: opacity 380ms var(--ease-soft);
-      }
-      .page.on { opacity: 1; pointer-events: auto; }
-      .page-card {
-        width: min(700px, 92vw); max-height: 86vh; overflow-x: hidden;
-        display: flex; flex-direction: column;
-        padding: clamp(20px,2.2vw,40px) clamp(20px,2.4vw,42px);
-        background: linear-gradient(168deg, rgba(255,255,255,0.98), rgba(243,248,253,0.92));
-        border-radius: clamp(10px,1vw,16px);
-        box-shadow: 0 26px 70px rgba(37,48,70,0.2);
-        transform: translateY(20px) scale(0.985);
-        transition: transform 480ms var(--ease-out);
-        position: relative;
-      }
-      .page.on .page-card { transform: none; }
-      .page-card::before {
-        content: ''; position: absolute; inset: 6px;
-        border: 1px solid rgba(184,143,74,0.42); border-radius: clamp(7px,0.7vw,12px);
-        pointer-events: none;
-      }
-      .page-head { display: flex; align-items: center; justify-content: space-between; }
-      .page-title {
-        font-family: var(--font-display); font-weight: 700;
-        font-size: clamp(17px,1.7vw,31px); letter-spacing: 0.12em;
-        text-transform: uppercase; color: var(--hud-navy);
-      }
-      .page-close {
-        cursor: pointer; border: 1px solid rgba(184,143,74,0.45);
-        background: rgba(255,255,255,0.7); border-radius: 8px;
-        padding: clamp(6px,0.55vw,10px) clamp(11px,1vw,18px);
-        font-family: var(--font-body); font-size: clamp(7.5px,0.62vw,10.5px);
-        letter-spacing: 0.2em; text-transform: uppercase; color: var(--hud-navy-so);
-        transition: background 420ms var(--ease-soft), color 300ms, border-color 420ms;
-      }
-      .page-close:hover {
-        background: linear-gradient(168deg, var(--hud-gold), var(--hud-gold-lo));
-        color: #FFFDF7; border-color: transparent;
-      }
-      .page-sub {
-        font-size: clamp(8px,0.66vw,11px); letter-spacing: 0.2em;
-        text-transform: uppercase; color: var(--hud-gold-lo);
-        margin: clamp(5px,0.5vw,9px) 0 clamp(12px,1.3vw,22px);
-      }
-      .page-body {
-        overflow-y: auto; overflow-x: hidden; min-width: 0;
-        display: flex; flex-direction: column; gap: clamp(6px,0.6vw,11px);
-        align-items: stretch;
-      }
-
-      /* settings rows */
-      .set-row {
-        display: flex; align-items: center; justify-content: space-between; gap: 16px;
-        padding: clamp(10px,1vw,17px) clamp(12px,1.2vw,20px);
-        border: 1px solid rgba(184,143,74,0.25); border-radius: 10px;
-        background: rgba(255,255,255,0.55); cursor: pointer;
-        transition: border-color 380ms var(--ease-soft), transform 380ms var(--ease-out);
-      }
-      .set-row:hover { border-color: var(--hud-gold); transform: translateX(3px); }
-      .set-name {
-        font-size: clamp(9px,0.78vw,13px); letter-spacing: 0.1em;
-        color: var(--hud-navy); display: flex; flex-direction: column; gap: 3px;
-      }
-      .set-name em {
-        font-style: normal; font-size: clamp(7px,0.58vw,9.5px);
-        letter-spacing: 0.16em; text-transform: uppercase; color: var(--hud-navy-so);
-      }
-      .set-row input[type=range] {
-        -webkit-appearance: none; appearance: none; width: clamp(96px,11vw,190px);
-        height: 3px; border-radius: 2px; background: rgba(184,143,74,0.25); outline: none;
-      }
-      .set-row input[type=range]::-webkit-slider-thumb {
-        -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
-        background: var(--hud-gold); cursor: pointer;
-        box-shadow: 0 2px 7px rgba(37,48,70,0.22);
-        transition: transform 260ms var(--ease-out);
-      }
-      .set-row input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.22); }
-      .set-row.toggle input { display: none; }
-      .switch {
-        position: relative; width: 42px; height: 22px; border-radius: 999px;
-        background: rgba(184,143,74,0.22); flex: none;
-        transition: background 380ms var(--ease-soft);
-      }
-      .switch::after {
-        content: ''; position: absolute; top: 3px; left: 3px;
-        width: 16px; height: 16px; border-radius: 50%; background: #fff;
-        box-shadow: 0 2px 6px rgba(37,48,70,0.2);
-        transition: transform 380ms var(--ease-out);
-      }
-      .set-row.toggle input:checked ~ .switch { background: var(--hud-gold); }
-      .set-row.toggle input:checked ~ .switch::after { transform: translateX(20px); }
-
-      /* achievement + leaderboard + ability rows */
-      .ach-row, .ab-row {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto;
-        align-items: center; gap: clamp(10px,1vw,18px);
-        padding: clamp(11px,1.1vw,18px) clamp(12px,1.2vw,20px);
-        border: 1px solid rgba(184,143,74,0.25); border-radius: 10px;
-        background: rgba(255,255,255,0.55);
-        transition: border-color 380ms var(--ease-soft), transform 380ms var(--ease-out),
-                    background 380ms var(--ease-soft);
-      }
-      .lb-row {
-        display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
-        align-items: center; gap: clamp(10px,1vw,18px);
-      }
-      .ach-row:hover, .lb-row:hover, .ab-row:hover { border-color: var(--hud-gold); transform: translateX(3px); }
-      /* Rows size to their content; nothing is clipped. */
-      .ach-row, .lb-row, .ab-row, .set-row, .board-row {
-        flex-shrink: 0; overflow: visible;
-      }
-      .ach-text { min-width: 0; }
-      .ach-name, .ab-name, .ach-desc, .ab-desc {
-        overflow-wrap: anywhere; white-space: normal; line-height: 1.35;
-      }
-      .ach-icon, .ab-icon {
-        width: clamp(32px,3vw,52px); aspect-ratio: 1; flex: none;
-        display: grid; place-items: center; border-radius: 50%;
-        border: 1px solid rgba(184,143,74,0.4);
-        font-size: clamp(15px,1.4vw,25px); color: var(--hud-gold);
-        background: rgba(255,255,255,0.7);
-      }
-      .ach-row.locked { opacity: 0.5; }
-      .ach-row.locked .ach-icon { color: var(--hud-navy-so); }
-      .ach-text { flex: 1; min-width: 0; }
-      .ach-name, .ab-name, .ach-desc, .ab-desc { overflow-wrap: anywhere; }
-      .ach-name, .ab-name {
-        font-family: var(--font-display); font-weight: 600;
-        font-size: clamp(10px,0.9vw,15px); letter-spacing: 0.1em; color: var(--hud-navy);
-      }
-      .ach-desc, .ab-desc {
-        font-size: clamp(7.5px,0.62vw,10.5px); letter-spacing: 0.08em;
-        color: var(--hud-navy-so); margin-top: 3px;
-      }
-      .ach-prog { width: clamp(58px,7vw,120px); flex: none; text-align: right; }
-      .ach-prog-bar { height: 3px; border-radius: 2px; background: rgba(184,143,74,0.2); overflow: hidden; }
-      .ach-prog-fill { height: 100%; background: linear-gradient(90deg, var(--hud-gold-lo), var(--hud-gold)); }
-      .ach-prog-txt {
-        font-size: clamp(6.5px,0.55vw,9px); letter-spacing: 0.14em;
-        color: var(--hud-navy-so); margin-top: 4px; font-variant-numeric: tabular-nums;
-      }
-      .lb-rank {
-        font-family: var(--font-display); font-weight: 700;
-        font-size: clamp(14px,1.3vw,24px); color: var(--hud-gold);
-        width: clamp(28px,2.6vw,46px); flex: none;
-      }
-      .lb-score {
-        font-family: var(--font-display); font-weight: 600;
-        font-size: clamp(12px,1.1vw,20px); color: var(--hud-navy);
-        font-variant-numeric: tabular-nums;
-      }
-      .ab-row.equipped { background: linear-gradient(168deg, rgba(200,168,104,0.18), rgba(200,168,104,0.07)); border-color: var(--hud-gold); }
-      /* Locked rows stay readable: the point is to show what you are working
-         toward, so dimming them to near-invisibility defeated the purpose. */
-      .ab-row.locked { opacity: 0.72; background: rgba(255,255,255,0.32); border-style: dashed; }
-      .ab-row.locked .ab-icon {
-        color: var(--hud-navy-so) !important; background: rgba(255,255,255,0.4);
-        position: relative; overflow: visible;
-      }
-      .ab-lock {
-        position: absolute; right: -3px; bottom: -3px;
-        width: 44%; height: 44%; color: var(--hud-navy-so);
-        background: var(--hud-ivory, #F7F4EC); border-radius: 50%;
-        padding: 2px; box-sizing: content-box;
-      }
-      .ab-row.locked:hover { border-color: rgba(184,143,74,0.5); transform: none; }
-      .ab-row.shake { animation: abShake 400ms var(--ease-out); }
-      @keyframes abShake {
-        0%,100% { transform: translateX(0); }
-        22% { transform: translateX(-5px); } 46% { transform: translateX(4px); }
-        70% { transform: translateX(-2px); }
-      }
-
-      .ab-meta {
-        display: inline-block; margin-top: 6px;
-        font-size: clamp(6.5px,0.55vw,9.5px); letter-spacing: 0.16em;
-        text-transform: uppercase; color: var(--hud-gold-lo);
-      }
-      .ab-meta.locked { color: var(--hud-navy-so); opacity: 0.85; }
-
-      /* Coin bank — the balance every unlock in the game is priced against. */
-      .ab-bank {
-        display: grid; grid-template-columns: auto minmax(0,1fr);
-        align-items: center; gap: clamp(14px,1.6vw,30px);
-        padding: clamp(13px,1.3vw,22px) clamp(15px,1.5vw,26px);
-        border: 1px solid rgba(184,143,74,0.4); border-radius: 12px;
-        background: linear-gradient(150deg, rgba(200,168,104,0.20), rgba(200,168,104,0.05));
-        flex-shrink: 0;
-      }
-      .ab-bank-label {
-        font-size: clamp(6.5px,0.55vw,9.5px); letter-spacing: 0.24em;
-        text-transform: uppercase; color: var(--hud-navy-so);
-      }
-      .ab-bank-value {
-        font-family: var(--font-display); font-weight: 700;
-        font-size: clamp(22px,2.4vw,44px); line-height: 1.05;
-        color: var(--hud-gold); font-variant-numeric: tabular-nums;
-      }
-      .ab-bank-next { min-width: 0; }
-      .ab-bank-next .ach-prog-bar { margin-top: 7px; }
-      .ab-bank-need {
-        margin-top: 5px; font-size: clamp(6.5px,0.55vw,9.5px);
-        letter-spacing: 0.18em; text-transform: uppercase;
-        color: var(--hud-navy-so); font-variant-numeric: tabular-nums;
-      }
-      .ab-hint {
-        font-size: clamp(7.5px,0.62vw,11px); line-height: 1.6;
-        letter-spacing: 0.05em; color: var(--hud-navy-so);
-        padding: 0 clamp(4px,0.5vw,8px); flex-shrink: 0;
-      }
-      @media (max-width: 780px), (pointer: coarse) {
-        .ab-bank { grid-template-columns: 1fr; gap: 12px; }
-      }
-      .ab-badge {
-        font-size: clamp(6.5px,0.55vw,9px); letter-spacing: 0.18em;
-        text-transform: uppercase; color: var(--hud-gold-lo);
-        border: 1px solid rgba(184,143,74,0.45); border-radius: 999px;
-        padding: 4px 10px; white-space: nowrap;
-        transition: background 320ms var(--ease-soft), color 320ms var(--ease-soft);
-      }
-      .ab-row:hover .ab-badge { background: rgba(184,143,74,0.16); }
-      .ab-badge.on { background: var(--hud-gold); color: #FFF; border-color: var(--hud-gold); }
-
-      @media (max-width: 780px), (pointer: coarse) {
-        .pause-panel { width: 100%; }
-        body.paused #game-container > canvas, body.paused #hud-layer {
-          transform: translateY(-8%) scale(0.9);
-        }
-        .page-card { width: 92vw; }
-      }
-
-      /* Mode cards read as inert without a selected state — selection worked
-         the whole time, it just never looked like it had. */
-      .modes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap: clamp(7px,0.7vw,13px); }
-      .mode-card {
-        cursor: pointer; padding: clamp(11px,1.15vw,19px) clamp(13px,1.3vw,22px);
-        border: 1px solid rgba(184,143,74,0.28); border-radius: 10px;
-        background: rgba(255,255,255,0.55); color: var(--hud-navy);
-        transition: background 420ms var(--ease-soft), border-color 420ms var(--ease-soft),
-                    transform 380ms var(--ease-out), color 300ms var(--ease-soft);
-      }
-      .mode-card:hover {
-        transform: translateY(-3px);
-        background: linear-gradient(168deg, var(--hud-gold), var(--hud-gold-lo));
-        color: #FFFDF7; border-color: transparent;
-      }
-      .mode-card:hover * { color: #FFFDF7 !important; }
-      .mode-card.selected {
-        border-color: var(--hud-gold);
-        background: linear-gradient(168deg, rgba(200,168,104,0.2), rgba(200,168,104,0.08));
-      }
-      .mode-card.selected::after {
-        content: '✦ Selected'; display: block; margin-top: 7px;
-        font-size: clamp(6.5px,0.55vw,9px); letter-spacing: 0.2em;
-        text-transform: uppercase; color: var(--hud-gold-lo);
-      }
-      .mode-card-header {
-        font-family: var(--font-display); font-weight: 600;
-        font-size: clamp(10px,0.9vw,15px); letter-spacing: 0.12em; text-transform: uppercase;
-      }
-      .mode-card-desc, .mode-card-footer {
-        font-size: clamp(7.5px,0.6vw,10.5px); letter-spacing: 0.1em;
-        color: var(--hud-navy-so); margin-top: 5px;
-      }
-
-      /* ==================================================================
-         LEADERBOARD — a split, not a dialog.
-         The world slides left and keeps playing; the board occupies the right
-         as its own surface. The reference reads as two panes of one screen
-         rather than a card floating over the game, and the diagonal seam is
-         what sells that.
-         ================================================================== */
-      /* The world is deliberately untouched — no zoom, no dim, no scale. The
-         reference reads as the board sliding in beside the same scene, not as
-         a dialog opening over a demoted one. */
-      body.board-open #screen-title .title-panel,
-      body.board-open .title-eyebrow,
-      body.board-open #skins,
-      body.board-open .title-version,
-      body.board-open #audio-toggle { opacity: 0; pointer-events: none; }
-      #screen-title .title-panel, .title-eyebrow, #skins,
-      .title-version, #audio-toggle {
-        transition: opacity 420ms var(--ease-soft);
-      }
-
-      .board {
-        position: fixed; inset: 0; z-index: 44; pointer-events: none;
-        opacity: 0; transition: opacity 420ms var(--ease-soft);
-      }
-      .board.on { opacity: 1; pointer-events: auto; }
-      .board-panel {
-        position: absolute; top: 0; bottom: 0; right: 0;
-        width: clamp(320px, 42vw, 720px);
-        display: flex; flex-direction: column;
-        padding: clamp(20px, 2.4vw, 46px) clamp(18px, 2.2vw, 44px) clamp(16px, 1.8vw, 34px);
-        background: linear-gradient(196deg, rgba(255,255,255,0.98), rgba(242,247,252,0.95));
-        box-shadow: -30px 0 70px rgba(37,48,70,0.16);
-        transform: translateX(102%);
-        transition: transform 680ms var(--ease-out);
-        overflow: hidden;
-        /* The angled leading edge from the reference, cut into the panel
-           itself so the seam is real geometry rather than an overlaid shape. */
-        clip-path: polygon(118px 0, 100% 0, 100% 100%, 0 100%);
-        padding-left: clamp(70px, 7.5vw, 132px);
-      }
-      .board.on .board-panel { transform: none; }
-      /* The diagonal seam from the reference. */
-      /* A gilt hairline running down the cut. */
-      .board-panel::before {
-        content: ''; position: absolute; top: 0; bottom: 0; left: 0;
-        width: 122px;
-        background: linear-gradient(196deg, rgba(200,168,104,0.9), rgba(200,168,104,0.28));
-        clip-path: polygon(118px 0, 120px 0, 2px 100%, 0 100%);
-      }
-      .board-panel > * { position: relative; z-index: 1; }
-
-      .board-head {
-        display: flex; align-items: center; justify-content: center;
-        gap: clamp(10px, 1.1vw, 20px); margin-bottom: clamp(12px, 1.3vw, 24px);
-      }
-      .board-orn { color: var(--hud-gold); font-size: clamp(11px, 1vw, 17px); }
-      .board-title {
-        font-family: var(--font-display); font-weight: 700;
-        font-size: clamp(17px, 1.75vw, 32px); letter-spacing: 0.30em;
-        text-transform: uppercase; color: var(--hud-navy);
-      }
-      .board-tabs {
-        display: flex; gap: 0; margin: 0 auto clamp(14px, 1.5vw, 26px);
-        padding: 4px; border-radius: 12px;
-        border: 1px solid rgba(184,143,74,0.32); background: rgba(255,255,255,0.6);
-      }
-      .board-tab {
-        cursor: pointer; border: 0; background: none; border-radius: 9px;
-        padding: clamp(7px,0.72vw,13px) clamp(18px,1.9vw,38px);
-        font-family: var(--font-body); font-weight: 500;
-        font-size: clamp(8.5px,0.7vw,12px); letter-spacing: 0.22em;
-        text-transform: uppercase; color: var(--hud-navy-so);
-        transition: color 400ms var(--ease-soft), background 400ms var(--ease-soft);
-      }
-      .board-tab.active { color: var(--hud-navy); background: rgba(200,168,104,0.18); }
-      .board-tab:hover { color: var(--hud-navy); }
-
-      .board-cols {
-        display: grid; grid-template-columns: clamp(48px,5vw,86px) 1fr auto;
-        gap: clamp(8px,0.9vw,18px); padding: 0 clamp(18px,1.8vw,32px) clamp(7px,0.7vw,12px);
-        font-size: clamp(7px,0.58vw,10px); letter-spacing: 0.24em;
-        text-transform: uppercase; color: var(--hud-navy-so);
-      }
-      .board-cols span:last-child { text-align: right; }
-      .board-list {
-        flex: 1; overflow-y: auto; overflow-x: hidden;
-        display: flex; flex-direction: column; gap: 4px; align-items: stretch;
-      }
-
-      /* Rows rake with the panel's cut. The shear is applied to the card and
-         undone on its contents, so the edges are angular but nothing reads as
-         italic or misaligned. */
-      .board-row {
-        display: grid; grid-template-columns: clamp(48px,5vw,86px) 1fr auto;
-        align-items: center; gap: clamp(8px,0.9vw,18px);
-        padding: clamp(9px,0.95vw,16px) clamp(14px,1.4vw,26px);
-        border: 1px solid rgba(184,143,74,0.2); border-radius: 11px;
-        background: rgba(255,255,255,0.6);
-        transform: skewX(-6deg);
-        animation: boardIn 560ms var(--ease-out) backwards;
-        transition: border-color 420ms var(--ease-soft), transform 420ms var(--ease-out),
-                    background 420ms var(--ease-soft);
-      }
-      .board-row > * { transform: skewX(6deg); }
-      .board-row:hover { border-color: var(--hud-gold); transform: skewX(-6deg) translateX(-5px); }
-      @keyframes boardIn {
-        from { opacity: 0; transform: skewX(-6deg) translateX(30px); }
-        to   { opacity: 1; transform: skewX(-6deg); }
-      }
-
-      .board-rank {
-        font-family: var(--font-display); font-weight: 700;
-        font-size: clamp(11px, 0.95vw, 17px); color: var(--hud-navy-so);
-        font-variant-numeric: tabular-nums;
-      }
-      /* Top three get a cut diamond medal, as in the reference. */
-      .board-medal {
-        width: clamp(24px,2.2vw,38px); aspect-ratio: 1; display: grid; place-items: center;
-        transform: rotate(45deg); border-radius: 5px;
-        border: 1.5px solid var(--hud-gold); background: rgba(255,255,255,0.9);
-      }
-      .board-medal span { transform: rotate(-45deg); font-family: var(--font-display);
-        font-weight: 700; font-size: clamp(10px,0.85vw,15px); color: var(--hud-gold-lo); }
-      .board-row.r2 .board-medal { border-color: #97A6BC; }
-      .board-row.r2 .board-medal span { color: #6F7F97; }
-      .board-row.r3 .board-medal { border-color: #C08A5A; }
-      .board-row.r3 .board-medal span { color: #A06B3C; }
-
-      .board-name {
-        font-family: var(--font-display); font-weight: 600;
-        font-size: clamp(11px, 0.98vw, 18px); letter-spacing: 0.14em;
-        text-transform: uppercase; color: var(--hud-navy); overflow-wrap: anywhere;
-      }
-      .board-time {
-        font-family: var(--font-display); font-weight: 600;
-        font-size: clamp(11px, 0.98vw, 18px); color: var(--hud-navy);
-        font-variant-numeric: tabular-nums; white-space: nowrap;
-      }
-      /* The player's own row is the hero of the board. */
-      .board-row.you {
-        border-color: var(--hud-gold); border-width: 1.5px;
-        background: linear-gradient(100deg, rgba(200,168,104,0.2), rgba(200,168,104,0.06));
-        box-shadow: 0 6px 22px rgba(200,168,104,0.24);
-      }
-      .board-row.you .board-name, .board-row.you .board-time { color: var(--hud-gold-lo); }
-      .board-row.you::after {
-        content: ''; position: absolute; inset: 0; border-radius: inherit;
-        box-shadow: 0 0 0 0 rgba(200,168,104,0.5);
-        animation: youPulse 3.2s var(--ease-soft) infinite; pointer-events: none;
-      }
-      @keyframes youPulse {
-        0%, 100% { box-shadow: 0 0 0 0 rgba(200,168,104,0.32); }
-        50%      { box-shadow: 0 0 0 7px rgba(200,168,104,0); }
-      }
-      .board-row.you { position: relative; }
-      .board-row.you:hover { transform: skewX(-6deg) translateX(-5px); }
-
-      .board-foot {
-        display: flex; align-items: center; justify-content: space-between;
-        gap: 12px; margin-top: clamp(12px,1.3vw,24px);
-        padding: clamp(11px,1.15vw,20px) clamp(14px,1.4vw,26px);
-        border: 1px solid var(--hud-gold); border-radius: 12px;
-        background: linear-gradient(100deg, rgba(200,168,104,0.14), rgba(200,168,104,0.04));
-        transform: skewX(-6deg);
-      }
-      .board-foot > * { transform: skewX(6deg); }
-      .board-foot span {
-        font-size: clamp(7.5px,0.62vw,11px); letter-spacing: 0.26em;
-        text-transform: uppercase; color: var(--hud-navy-so);
-      }
-      .board-foot b {
-        font-family: var(--font-display); font-weight: 700;
-        font-size: clamp(14px,1.3vw,24px); color: var(--hud-gold-lo);
-        font-variant-numeric: tabular-nums;
-      }
-      .board-close {
-        margin-top: clamp(9px,0.95vw,17px); cursor: pointer;
-        border: 1px solid rgba(184,143,74,0.45); border-radius: 10px;
-        background: rgba(255,255,255,0.7);
-        padding: clamp(9px,0.9vw,16px);
-        font-family: var(--font-body); font-size: clamp(7.5px,0.62vw,11px);
-        letter-spacing: 0.24em; text-transform: uppercase; color: var(--hud-navy-so);
-        position: relative; isolation: isolate; overflow: hidden;
-        transition: color 420ms var(--ease-soft), border-color 420ms var(--ease-soft);
-      }
-      .board-close::after {
-        content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
-        background: linear-gradient(168deg, var(--hud-gold), var(--hud-gold-lo));
-        opacity: 0; transition: opacity 420ms var(--ease-soft);
-      }
-      .board-close:hover { color: #FFFDF7; border-color: transparent; }
-      .board-close:hover::after { opacity: 1; }
-
-      @media (max-width: 860px), (pointer: coarse) {
-        .board-panel { width: 100%; }
-        .board-panel::before { display: none; }
-        body.board-open #game-container > canvas { transform: translateY(-16%) scale(0.86); }
-      }
-
-      /* Reduced HUD — opt-in, off by default. Keeps combo, section progress,
-         the route minimap and the speed dial; everything else steps out. */
-      body.hud-min .hud-stat,
-      body.hud-min .hud-boost,
-      body.hud-min .hud-next,
-      body.hud-min .hud-deck .ctl-name,
-      body.hud-min .ctl-steer { display: none; }
-      body.hud-min .hud-right { top: clamp(10px, 1.6vh, 26px); }
-
-      #crt-overlay {
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-        z-index: 5;
-        background: radial-gradient(circle at 50% 42%, rgba(255, 246, 214, 0.20) 0%, rgba(255, 246, 214, 0) 55%),
-                    radial-gradient(circle at center, transparent 62%, rgba(109, 159, 212, 0.26) 100%);
-      }
 
       /* ==========================================================================
          WEB PRELOADER / SPLASH SCREEN
@@ -3812,59 +3561,6 @@
         transition: color 200ms;
       }
       .btn-ghost-action:hover { color: var(--hud-navy); }
-
-      /* Multi-Tab Leaderboard Controls */
-      .board-mode-tabs {
-        display: flex; gap: 4px; margin: 0 auto 10px; overflow-x: auto;
-        padding: 3px; border-radius: 10px;
-        border: 1px solid rgba(184, 143, 74, 0.25); background: rgba(255,255,255,0.45);
-        max-width: 100%;
-      }
-      .board-mode-tab {
-        cursor: pointer; border: 0; background: none; border-radius: 7px;
-        padding: 5px 12px; font-family: var(--font-body); font-weight: 600;
-        font-size: clamp(7.5px, 0.6vw, 10px); letter-spacing: 0.14em;
-        text-transform: uppercase; color: var(--hud-navy-so); white-space: nowrap;
-        transition: color 200ms, background 200ms;
-      }
-      .board-mode-tab.active {
-        color: var(--hud-navy); background: rgba(200, 168, 104, 0.22);
-      }
-      .board-tabs-row {
-        display: flex; align-items: center; justify-content: space-between;
-        gap: 8px; margin-bottom: 12px; flex-wrap: wrap;
-      }
-      .board-tabs {
-        display: flex; gap: 0; margin: 0 !important;
-        padding: 3px; border-radius: 9px;
-        border: 1px solid rgba(184,143,74,0.32); background: rgba(255,255,255,0.6);
-      }
-      .board-tab {
-        padding: clamp(5px, 0.5vw, 9px) clamp(12px, 1.2vw, 22px) !important;
-      }
-      .board-window-tabs {
-        display: flex; gap: 3px;
-        padding: 3px; border-radius: 9px;
-        border: 1px solid rgba(184, 143, 74, 0.25); background: rgba(255,255,255,0.45);
-      }
-      .board-win-tab {
-        cursor: pointer; border: 0; background: none; border-radius: 7px;
-        padding: clamp(5px, 0.5vw, 9px) clamp(10px, 1vw, 18px);
-        font-family: var(--font-body); font-size: clamp(7.5px, 0.6vw, 10px);
-        letter-spacing: 0.16em; text-transform: uppercase; color: var(--hud-navy-so);
-        transition: color 200ms, background 200ms;
-      }
-      .board-win-tab.active {
-        color: var(--hud-navy); background: rgba(200, 168, 104, 0.2);
-      }
-      .board-player-tag {
-        font-size: 0.72em; opacity: 0.65; margin-left: 4px; font-family: var(--font-num);
-      }
-      .board-empty {
-        padding: 36px 16px; text-align: center; font-family: var(--font-display);
-        font-size: clamp(10px, 0.9vw, 14px); letter-spacing: 0.16em;
-        text-transform: uppercase; color: var(--hud-navy-so);
-      }
     </style>
   </head>
   <body>
@@ -3916,7 +3612,7 @@
         <!-- AIR DASH — a body in flight with the air torn behind it. -->
         <symbol id="ic-dash" viewBox="0 0 24 24">
           <path fill="currentColor" d="M20.9 3.2c-3.5-.5-6.8.7-9.2 3.1l-1.5 1.5 4 4 1.5-1.5c2.4-2.4 3.6-5.6 3.1-9.1z"/>
-          <circle cx="16.3" cy="7.7" r="1.5" fill="#0d1018" opacity=".82"/>
+          <circle cx="16.3" cy="7.7" r="1.5" fill="rgba(255,255,255,0.85)"/>
           <path fill="currentColor" d="M9.4 12.2 6.6 9.4l-2.5.6a1 1 0 0 0-.5 1.7l1.7 1.7zM11.8 14.6l2.8 2.8-.6 2.5a1 1 0 0 1-1.7.5l-1.7-1.7z"/>
           <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
                 d="M7.6 16.4 4.3 19.7M4.9 14.1l-1.7 1.7M9.9 18.9l-1.7 1.7"/>
@@ -3934,8 +3630,8 @@
         <!-- FEATHER FALL -->
         <symbol id="ic-feather" viewBox="0 0 24 24">
           <path fill="currentColor" d="M19.8 3.1c-4.2-.9-8 .4-10.6 3.6-2.2 2.7-2.9 5.9-2.4 8.9l-2.5 2.5a1 1 0 1 0 1.4 1.4l2.5-2.5c3 .5 6.2-.2 8.9-2.4 3.2-2.6 4.5-6.4 3.6-10.6z"/>
-          <path fill="#0d1018" opacity=".8" d="m17.9 5.2-9.2 9.2q-.2-1.4 0-2.7l7-7q1.2-.3 2.2.5z"/>
-          <path fill="#0d1018" opacity=".55" d="M15.7 9.3 11 14l-1-1 4.7-4.7zM13.4 6.6 8.7 11.3l.7 1.1 4.7-4.7z"/>
+          <path fill="rgba(255,255,255,0.75)" d="m17.9 5.2-9.2 9.2q-.2-1.4 0-2.7l7-7q1.2-.3 2.2.5z"/>
+          <path fill="rgba(255,255,255,0.5)" d="M15.7 9.3 11 14l-1-1 4.7-4.7zM13.4 6.6 8.7 11.3l.7 1.1 4.7-4.7z"/>
         </symbol>
 
         <!-- TEMPO -->
@@ -3949,7 +3645,7 @@
         <!-- COMET -->
         <symbol id="ic-comet" viewBox="0 0 24 24">
           <path fill="currentColor" d="M21.3 2.7c-4.7-.9-9 .6-11.9 4-1.6 1.9-2.5 4-2.8 6.1-.2 1.3-.9 2-2 2.4-1.5.5-2.4 1.7-2.4 3.1a3.3 3.3 0 0 0 5.6 2.3c.8-.8 1.1-1.7 1.4-2.7.4-1.3 1.2-2 2.5-2.3 2.1-.4 4.1-1.4 5.9-3.1 3.3-3 4.7-7.1 3.7-9.8z"/>
-          <path fill="#0d1018" opacity=".72" d="M18.6 5.6c-2.9-.3-5.4.6-7.3 2.8-1.1 1.2-1.8 2.6-2.1 4 1.6-.3 3.2-1 4.6-2.2 2-1.6 3.6-3.1 4.8-4.6z"/>
+          <path fill="rgba(255,255,255,0.7)" d="M18.6 5.6c-2.9-.3-5.4.6-7.3 2.8-1.1 1.2-1.8 2.6-2.1 4 1.6-.3 3.2-1 4.6-2.2 2-1.6 3.6-3.1 4.8-4.6z"/>
         </symbol>
 
         <!-- ECHO -->
@@ -3964,7 +3660,7 @@
         <!-- AEGIS -->
         <symbol id="ic-aegis" viewBox="0 0 24 24">
           <path fill="currentColor" d="M12 1.6 3.5 4.9v6.6c0 5 3.6 9.3 8.5 10.9 4.9-1.6 8.5-5.9 8.5-10.9V4.9z"/>
-          <path fill="#0d1018" opacity=".75" d="M12 4.2 6 6.5v5c0 3.6 2.5 6.8 6 8.2z"/>
+          <path fill="rgba(255,255,255,0.7)" d="M12 4.2 6 6.5v5c0 3.6 2.5 6.8 6 8.2z"/>
         </symbol>
 
         <!-- STEER — the only control with no cooldown, so it gets no ring. -->

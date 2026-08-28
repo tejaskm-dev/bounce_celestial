@@ -35,6 +35,10 @@ export interface AbilityDef {
   unlockAt: number;
   /** Hex tint used for the meter and the activation flash. */
   tint: number;
+  /** Cooldown in seconds between consecutive uses for multi-use abilities. */
+  cooldownBetweenUses: number;
+  /** Recovery cooldown in seconds after depleting all uses / single use. */
+  cooldownRecovery: number;
 }
 
 export const ABILITIES: Record<AbilityId, AbilityDef> = {
@@ -46,6 +50,8 @@ export const ABILITIES: Record<AbilityId, AbilityDef> = {
     duration: 3.2,
     unlockAt: 0,
     tint: 0xB2D2EE,
+    cooldownBetweenUses: 2.5,
+    cooldownRecovery: 7.5,
   },
   tempo: {
     id: 'tempo',
@@ -55,6 +61,8 @@ export const ABILITIES: Record<AbilityId, AbilityDef> = {
     duration: 4.0,
     unlockAt: 150,
     tint: 0xE0BC6E,
+    cooldownBetweenUses: 3.0,
+    cooldownRecovery: 8.5,
   },
   comet: {
     id: 'comet',
@@ -64,6 +72,8 @@ export const ABILITIES: Record<AbilityId, AbilityDef> = {
     duration: 5.0,
     unlockAt: 400,
     tint: 0xE0645C,
+    cooldownBetweenUses: 3.5,
+    cooldownRecovery: 10.0,
   },
   echo: {
     id: 'echo',
@@ -73,6 +83,8 @@ export const ABILITIES: Record<AbilityId, AbilityDef> = {
     duration: 7.0,
     unlockAt: 800,
     tint: 0xC99AA0,
+    cooldownBetweenUses: 3.5,
+    cooldownRecovery: 9.5,
   },
   aegis: {
     id: 'aegis',
@@ -82,6 +94,8 @@ export const ABILITIES: Record<AbilityId, AbilityDef> = {
     duration: 0,
     unlockAt: 1400,
     tint: 0x8FB07C,
+    cooldownBetweenUses: 0,
+    cooldownRecovery: 10.0,
   },
 };
 
@@ -97,23 +111,13 @@ const STORE_EQUIPPED = 'bounce.ability.equipped';
 const STORE_COINS = 'bounce.coins.lifetime';
 
 /**
- * Charge, activation and unlock state. Deliberately owns no rendering and no
- * gameplay — the Game asks it what is active and applies the consequences, so
- * adding an ability never means touching the physics.
+ * Charge, activation, dual cooldown (time + coins) and unlock state.
  */
 export class AbilityState {
   equipped: AbilityId = 'featherfall';
   /** Coins banked toward the *next* use. Resets each time one is banked. */
   charge = 0;
-  /**
-   * Completed uses in hand.
-   *
-   * Coins used to fill one meter that stopped at full, so every coin collected
-   * past that point was wasted and there was no way to hold a use in reserve
-   * for the segment you could see coming. Banking them makes a full meter worth
-   * something, and gives the deck a number to show that a progress ring cannot:
-   * not how close the next use is, but how many you already have.
-   */
+  /** Completed uses in hand. */
   charges = 0;
   readonly maxCharges = 3;
   /** Seconds left on the active effect, 0 when idle. */
@@ -123,7 +127,15 @@ export class AbilityState {
   /** Armed but not yet consumed — used by instant abilities like Aegis. */
   armed = false;
 
+  /** Time cooldown timer in seconds. Ability cannot fire while cooldownTimer > 0. */
+  cooldownTimer = 0;
+  /** Max duration of the active cooldown timer for progress rendering. */
+  maxCooldown = 0;
+
   lifetimeCoins = 0;
+
+  private wasReady = false;
+  public onReadyCallback?: (abilityId: AbilityId) => void;
 
   constructor() {
     const eq = localStorage.getItem(STORE_EQUIPPED) as AbilityId | null;
@@ -132,7 +144,12 @@ export class AbilityState {
   }
 
   get def(): AbilityDef { return ABILITIES[this.equipped]; }
-  get ready(): boolean { return this.charges > 0; }
+  /** Ability is ready when it has charges, cooldown is 0, and not currently active */
+  get ready(): boolean { return this.charges > 0 && this.cooldownTimer <= 0; }
+  get isCooldown(): boolean { return this.cooldownTimer > 0; }
+  get cooldownRatio(): number {
+    return this.maxCooldown > 0 ? Math.max(0, Math.min(1, this.cooldownTimer / this.maxCooldown)) : 0;
+  }
   get fill(): number { return Math.min(1, this.charge / this.def.charge); }
   get isActive(): boolean { return this.active > 0 || this.armed; }
 
@@ -145,6 +162,9 @@ export class AbilityState {
     this.equipped = id;
     this.charge = 0;
     this.charges = 0;
+    this.cooldownTimer = 0;
+    this.maxCooldown = 0;
+    this.wasReady = false;
     localStorage.setItem(STORE_EQUIPPED, id);
     return true;
   }
@@ -152,19 +172,16 @@ export class AbilityState {
   /**
    * Called when a coin is picked up. Returns an ability id if this coin was
    * the one that unlocked it.
-   *
-   * Unlocks used to be silent: coins accumulated in localStorage, thresholds
-   * were crossed with no acknowledgement anywhere, and the only way to learn
-   * you had earned something was to open the ability page and notice a row was
-   * no longer greyed out. Reporting the crossing lets the run itself tell you.
    */
   addCoin(): AbilityId | null {
     if (this.charges < this.maxCharges) {
       this.charge++;
-      if (this.charge >= this.def.charge) { this.charge = 0; this.charges++; }
+      if (this.charge >= this.def.charge) {
+        this.charge = 0;
+        this.charges++;
+        this.checkReady();
+      }
     } else {
-      // Every use in hand: the meter sits full rather than silently eating the
-      // coin, so the player can see that spending one is what unblocks it.
       this.charge = this.def.charge;
     }
     const before = this.lifetimeCoins;
@@ -178,11 +195,6 @@ export class AbilityState {
     return null;
   }
 
-  /**
-   * The cheapest ability still locked, with progress toward it — the single
-   * fact the player needs to answer "what am I working toward?". Null once
-   * everything is unlocked.
-   */
   nextLocked(): { id: AbilityId; need: number; have: number; remaining: number } | null {
     let best: AbilityId | null = null;
     for (const id of ABILITY_ORDER) {
@@ -194,20 +206,34 @@ export class AbilityState {
     return { id: best, need, have: this.lifetimeCoins, remaining: need - this.lifetimeCoins };
   }
 
-  /** Progress toward one ability's unlock, 0..1. */
   unlockProgress(id: AbilityId): number {
     const at = ABILITIES[id].unlockAt;
     if (at <= 0) return 1;
     return Math.min(1, this.lifetimeCoins / at);
   }
 
-  /** Attempt to fire. Returns true if it actually went off. */
+  /** Attempt to fire. Applies time cooldown depending on remaining charges. */
   trigger(): boolean {
     if (!this.ready || this.isActive) return false;
     this.charges--;
     this.justFired = true;
-    if (this.def.duration > 0) this.active = this.def.duration;
-    else this.armed = true;
+    this.wasReady = false;
+
+    if (this.def.duration > 0) {
+      this.active = this.def.duration;
+    } else {
+      this.armed = true;
+    }
+
+    // Set dual cooldown: shorter between charges, longer after final charge
+    if (this.charges > 0) {
+      this.cooldownTimer = this.def.cooldownBetweenUses;
+      this.maxCooldown = this.def.cooldownBetweenUses;
+    } else {
+      this.cooldownTimer = this.def.cooldownRecovery;
+      this.maxCooldown = this.def.cooldownRecovery;
+    }
+
     return true;
   }
 
@@ -215,12 +241,35 @@ export class AbilityState {
   consumeArmed(): boolean {
     if (!this.armed) return false;
     this.armed = false;
+    this.cooldownTimer = this.def.cooldownRecovery;
+    this.maxCooldown = this.def.cooldownRecovery;
+    this.wasReady = false;
     return true;
+  }
+
+  public setOnReady(cb: (abilityId: AbilityId) => void): void {
+    this.onReadyCallback = cb;
+  }
+
+  private checkReady(): void {
+    const isNowReady = this.ready && !this.isActive;
+    if (isNowReady && !this.wasReady) {
+      this.wasReady = true;
+      this.onReadyCallback?.(this.equipped);
+    } else if (!isNowReady) {
+      this.wasReady = false;
+    }
   }
 
   update(dt: number): void {
     this.justFired = false;
-    if (this.active > 0) this.active = Math.max(0, this.active - dt);
+    if (this.active > 0) {
+      this.active = Math.max(0, this.active - dt);
+    }
+    if (this.cooldownTimer > 0) {
+      this.cooldownTimer = Math.max(0, this.cooldownTimer - dt);
+    }
+    this.checkReady();
   }
 
   resetRun(): void {
@@ -229,5 +278,8 @@ export class AbilityState {
     this.active = 0;
     this.armed = false;
     this.justFired = false;
+    this.cooldownTimer = 0;
+    this.maxCooldown = 0;
+    this.wasReady = false;
   }
 }

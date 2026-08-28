@@ -23,6 +23,23 @@ create table if not exists progression (
   updated_at     timestamptz not null default now()
 );
 
+-- 2b. USER MODE RECORDS (Guaranteed all-time best score and stats per user per game mode)
+create table if not exists user_mode_records (
+  user_id       uuid not null references auth.users on delete cascade,
+  mode          text not null check (mode in
+                  ('arcade','time_attack','score_attack','endless','daily','master')),
+  best_score    int  not null default 0 check (best_score >= 0),
+  best_distance real not null default 0 check (best_distance >= 0),
+  best_time     real,
+  best_combo    int  not null default 1 check (best_combo >= 1),
+  total_runs    bigint not null default 0,
+  updated_at    timestamptz not null default now(),
+  primary key (user_id, mode)
+);
+
+create index if not exists idx_user_mode_score on user_mode_records (mode, best_score desc);
+create index if not exists idx_user_mode_time on user_mode_records (mode, best_time asc) where mode = 'time_attack';
+
 -- 3. RUNS (Append-only record of accepted runs)
 create table if not exists runs (
   id          bigint generated always as identity primary key,
@@ -70,6 +87,7 @@ create table if not exists follows (
 
 alter table profiles enable row level security;
 alter table progression enable row level security;
+alter table user_mode_records enable row level security;
 alter table runs enable row level security;
 alter table achievements_unlocked enable row level security;
 alter table follows enable row level security;
@@ -91,6 +109,11 @@ create policy "Users can update own profile" on profiles
 drop policy if exists "Users can view own progression" on progression;
 create policy "Users can view own progression" on progression
   for select using (auth.uid() = user_id);
+
+-- User Mode Records: Public view for leaderboards.
+drop policy if exists "User mode records are viewable by everyone" on user_mode_records;
+create policy "User mode records are viewable by everyone" on user_mode_records
+  for select using (true);
 
 -- Runs: Select is public for leaderboards. NO client insert, update, or delete.
 drop policy if exists "Runs are viewable by everyone" on runs;
@@ -251,7 +274,7 @@ begin
       join profiles p on p.id = r.user_id
       where r.mode = p_mode
         and r.created_at >= v_cutoff
-        and r.flags = '{}'
+        and (r.flags is null or cardinality(r.flags) = 0 or not ('CHEATING' = any(r.flags)))
       order by r.user_id, r.run_time asc, r.created_at asc
     ),
     ranked as (
@@ -291,7 +314,7 @@ begin
       join profiles p on p.id = r.user_id
       where r.mode = p_mode
         and r.created_at >= v_cutoff
-        and r.flags = '{}'
+        and (r.flags is null or cardinality(r.flags) = 0 or not ('CHEATING' = any(r.flags)))
       order by r.user_id, r.score desc, r.created_at asc
     ),
     ranked as (
@@ -391,6 +414,27 @@ begin
       updated_at     = now()
   where public.progression.user_id = p_user_id
   returning * into v_prog;
+
+  -- 2b. Upsert User Mode Record with best score
+  insert into public.user_mode_records (
+    user_id, mode, best_score, best_distance, best_time, best_combo, total_runs, updated_at
+  )
+  values (
+    p_user_id, p_mode, p_score, p_distance,
+    case when p_mode = 'time_attack' and p_run_time > 0 then p_run_time else null end,
+    p_max_combo, 1, now()
+  )
+  on conflict (user_id, mode) do update
+  set best_score    = greatest(public.user_mode_records.best_score, excluded.best_score),
+      best_distance = greatest(public.user_mode_records.best_distance, excluded.best_distance),
+      best_combo    = greatest(public.user_mode_records.best_combo, excluded.best_combo),
+      best_time     = case
+                        when excluded.best_time is not null
+                        then least(coalesce(public.user_mode_records.best_time, 'Infinity'::real), excluded.best_time)
+                        else public.user_mode_records.best_time
+                      end,
+      total_runs    = public.user_mode_records.total_runs + 1,
+      updated_at    = now();
 
   -- 3. Calculate max score across runs for score achievements
   select coalesce(max(score), 0) into v_max_score from public.runs where user_id = p_user_id;

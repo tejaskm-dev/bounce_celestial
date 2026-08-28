@@ -160,6 +160,11 @@ export class TitleScreen {
 
   public openModeModal(): void {
     if (this.modalModes) {
+      const modes: GameModeId[] = ['arcade', 'time_attack', 'score_attack', 'endless', 'daily', 'master'];
+      modes.forEach((m) => {
+        const saved = Number(localStorage.getItem(`bounce_high_score_${m}`) ?? 0) || 0;
+        this.updateModeBest(m, saved);
+      });
       this.modalModes.classList.add('active');
     }
   }
@@ -205,9 +210,11 @@ export class TitleScreen {
   }
 
   public updateBest(bestScore: number): void {
-    this.currentBestScore = bestScore;
+    const savedArcade = Number(localStorage.getItem('bounce_high_score_arcade') ?? 0) || 0;
+    const effectiveBest = Math.max(bestScore, savedArcade);
+    this.currentBestScore = effectiveBest;
     if (this.titleBest) {
-      this.titleBest.textContent = bestScore > 0 ? bestScore.toLocaleString('en-US') : '0';
+      this.titleBest.textContent = effectiveBest > 0 ? effectiveBest.toLocaleString('en-US') : '0';
     }
 
     // Update lock status on skin buttons
@@ -216,7 +223,7 @@ export class TitleScreen {
       const el = btn as HTMLElement;
       const skinId = el.dataset.skin || '';
       const req = SKIN_UNLOCK_SCORES[skinId] ?? 0;
-      if (bestScore >= req) {
+      if (effectiveBest >= req) {
         el.classList.remove('locked');
         el.title = `${skinId.toUpperCase()} (UNLOCKED)`;
       } else {
@@ -234,7 +241,8 @@ export class TitleScreen {
   }
 
   public show(bestScore: number = 0): void {
-    this.updateBest(bestScore);
+    const savedArcade = Number(localStorage.getItem('bounce_high_score_arcade') ?? 0) || 0;
+    this.updateBest(Math.max(bestScore, savedArcade));
     this.screenEl.classList.add('active');
   }
 
